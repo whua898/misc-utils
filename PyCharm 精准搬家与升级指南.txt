@@ -1,0 +1,229 @@
+# PyCharm 精准搬家与升级指南
+## C 盘深度瘦身与防反弹操作清单
+
+---
+
+## ⚠️ 全局前提
+- 进行任何搬家操作前，必须**彻底关闭对应软件**（必要时在任务管理器中结束进程），防止文件被占用。
+- **重要：** 整个搬家过程中请保持 PyCharm 和其他软件处于关闭状态！
+- 建议收藏备用！
+
+💡 **提示：** 本指南适用于所有 JetBrains 产品（IDEA、WebStorm、Rider 等），只需将路径中的 PyCharm 替换为对应产品名称即可。
+
+---
+
+## 📁 第 0 步：在 D 盘建好目标文件夹
+
+### PyCharm 数据目录结构
+```
+D:\Users\wh898\PyCharmData\
+├── config          # 配置文件和个人设置
+├── system          # 缓存和索引（几十 G）
+├── plugins         # 插件
+├── log             # 日志文件
+└── Global          # 全局组件（AI 模型与守护进程）
+```
+
+### 其他软件目标目录
+```
+D:\Users\wh898\
+├── Tencent         # 腾讯全家桶（微信/QQ）缓存
+└── 123pan          # 123 云盘配置和缓存
+```
+
+---
+
+## 一、PyCharm 私有数据搬家
+
+### 1.1 修改配置文件（idea.properties 法）
+
+⚠️ **注意：先执行此步骤，再搬家！**
+
+**位置：** `C:\Users\wh898\AppData\Roaming\JetBrains\PyCharm[你的版本号]`
+
+**操作：**
+1. 找到（或新建）`idea.properties` 文件
+2. 写入以下 4 行并保存
+
+```properties
+idea.config.path=D:/Users/wh898/PyCharmData/config
+idea.system.path=D:/Users/wh898/PyCharmData/system
+idea.plugins.path=D:/Users/wh898/PyCharmData/plugins
+idea.log.path=D:/Users/wh898/PyCharmData/log
+```
+
+⚠️ **重要：** 此文件必须永远留在 C 盘这个位置，绝不能剪切走！
+
+### 1.2 精准对口搬家
+
+⚠️ **重要：确保 PyCharm 已完全关闭！**
+
+#### 📦 搬运源头 1：C 盘 Roaming 目录
+**当前位置：** `C:\Users\wh898\AppData\Roaming\JetBrains\PyCharm[你的版本号]`
+
+**流向 A - 搬插件：**
+- 直接选中 `plugins` 文件夹并剪切
+- 粘贴到 `D:\Users\wh898\PyCharmData\` 中（会自动合并到 plugins 目录）
+
+**流向 B - 搬设置：**
+- 回到 C 盘当前目录
+- 选中**除了 idea.properties 和 plugins 之外**的全部文件和文件夹（如 options、keymaps 等）
+- 剪切并粘贴到 `D:\Users\wh898\PyCharmData\config` 中
+
+#### 📦 搬运源头 2：C 盘 Local 目录
+**当前位置：** `C:\Users\wh898\AppData\Local\JetBrains\PyCharm[你的版本号]`
+
+**流向 C - 搬日志：**
+- 直接选中 `log` 文件夹并剪切（如果没有就算了）
+- 粘贴到 `D:\Users\wh898\PyCharmData\` 中（会自动合并到 log 目录）
+
+**流向 D - 搬缓存：**
+- 回到 C 盘当前目录
+- 选中**除了 log 之外**剩下的所有文件和文件夹（如 caches、index 等）
+- 剪切并粘贴到 `D:\Users\wh898\PyCharmData\system` 中
+
+### 1.3 应对升级
+
+**场景：** 安装新版本 PyCharm 后
+
+**操作：**
+1. 先不启动新版本
+2. 把旧版 C 盘文件夹里的 `idea.properties` 直接复制到新版 C 盘文件夹中
+3. 启动新版即可无缝继承 D 盘数据
+
+---
+
+## 二、PyCharm 全局组件（AI 模型与守护进程）
+
+**目标：** `Local\JetBrains` 下的 `acp-agents` 和 `Daemon` 文件夹
+
+### 操作步骤
+
+1. **创建目标目录**
+   - 在 D 盘新建：`D:\Users\wh898\PyCharmData\Global`
+
+2. **搬家**
+   - 打开 `C:\Users\wh898\AppData\Local\JetBrains`
+   - 选中 `acp-agents` 和 `Daemon` 这两个文件夹
+   - 剪切并粘贴到 `D:\Users\wh898\PyCharmData\Global` 中
+
+3. **创建软链接**（管理员 CMD 执行）
+
+⚠️ **重要：确保 PyCharm 已完全关闭！**
+
+以管理员身份打开 CMD，依次执行以下命令：
+
+```cmd
+mklink /J "C:\Users\wh898\AppData\Local\JetBrains\acp-agents" "D:\Users\wh898\PyCharmData\Global\acp-agents"
+mklink /J "C:\Users\wh898\AppData\Local\JetBrains\Daemon" "D:\Users\wh898\PyCharmData\Global\Daemon"
+```
+
+---
+
+## ✅ PyCharm 搬家完成检查
+
+完成 PyCharm 搬家后，请核对：
+
+- [ ] C 盘 `Roaming\...\PyCharm[版本号]` 目录下只剩下孤零零的 `idea.properties` 文件
+- [ ] C 盘 `Local\...\JetBrains` 目录下多了两个软链接（`acp-agents` 和 `Daemon`）
+- [ ] 以前那些吃硬盘的实体大文件，现在全部躺在 D 盘对应的 4 个文件夹里
+- [ ] 所有 mklink 命令执行成功，无报错
+
+**🎉 PyCharm 搬家完成！直接启动 PyCharm 即可！**
+
+---
+
+# 其他软件搬家指南
+
+---
+
+## 三、腾讯全家桶（微信 / QQ）
+
+### 3.1 聊天记录与文件（官方设置）
+
+**操作：**
+- 微信/QQ 内部 → 设置 → 文件管理/存储管理 → 更改存储路径至 D 盘
+- 让软件自动搬运
+
+### 3.2 顽固缓存库（小程序/视频号等）
+
+**目标：** `Roaming\Tencent` 文件夹
+
+**操作步骤：**
+1. 剪切该文件夹至 D 盘（如 `D:\Users\wh898\Tencent`）
+2. 管理员 CMD 执行：
+
+```cmd
+mklink /J "C:\Users\wh898\AppData\Roaming\Tencent" "D:\Users\wh898\Tencent"
+```
+
+---
+
+## 四、MetaQuotes (MT4 / MT5)
+
+### 最简方案（便携模式）
+
+**操作步骤：**
+
+1. 右键桌面快捷方式 → 属性
+2. 在"目标"末尾加一个空格和 `/portable`
+   ```
+   "D:\...\terminal64.exe" /portable
+   ```
+3. 将原 `C:\Users\wh898\AppData\Roaming\MetaQuotes\Terminal\乱码文件夹` 里的数据直接剪切到 MT4/MT5 安装目录下
+4. 以后全通过该快捷方式启动，C 盘的 MetaQuotes 即可安全删除
+
+---
+
+## 五、123pan (123 云盘)
+
+### 5.1 下载与临时缓存（官方设置）
+
+**操作：**
+- 软件内部 → 设置 → 将"下载路径"和"缓存目录 (Cache/Temp)"改到 D 盘
+
+### 5.2 配置文件与数据库
+
+**目标：** `Roaming\123pan` 文件夹
+
+**操作步骤：**
+1. 剪切该文件夹至 D 盘（如 `D:\Users\wh898\123pan`）
+2. 管理员 CMD 执行：
+
+```cmd
+mklink /J "C:\Users\wh898\AppData\Roaming\123pan" "D:\Users\wh898\123pan"
+```
+
+---
+
+## 🔍 附：软链接验证方法
+
+### 无箭头情况下的 mklink 终极验证法
+
+在系统隐藏了快捷方式小箭头的情况下，打开 CMD 命令行，输入：
+
+```cmd
+cd C:\Users\wh898\AppData\Local\JetBrains  (替换为你需要查看的 C 盘目录)
+dir
+```
+
+**判定标准：**
+- 只要目标文件夹前显示为 `<JUNCTION>`
+- 且右侧中括号内显示正确的目标路径
+- 即表示软链接创建成功
+
+**示例输出：**
+```
+<JUNCTION>    acp-agents     [D:\Users\wh898\PyCharmData\Global\acp-agents]
+<JUNCTION>    Daemon         [D:\Users\wh898\PyCharmData\Global\Daemon]
+```
+
+### 常见问题排查
+
+**问题 1：提示“拒绝访问”**
+- 原因：目标文件夹已被占用或存在同名文件夹
+- 解决：确保 PyCharm 已完全关闭，删除 C 盘的空文件夹后重试
+
+**问题 2：提示“找不到路径”**
+- 原因：D 盘目标文件夹不存在
+- 解决：先在 D 盘创建好对应的目标文件夹

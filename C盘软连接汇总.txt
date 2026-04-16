@@ -1,0 +1,197 @@
+========================================
+C盘软连接汇总报告
+生成时间: 2026-04-16
+========================================
+
+【统计摘要】
+总计软连接: 25个
+- 目录链接: 20个
+- 文件链接: 5个 (Windows系统应用)
+
+按目标位置分类:
+- D盘: 17个 (用户配置和Logitech数据)
+- F盘: 1个 (Adobe Photoshop)
+- C盘内部: 1个 (Autodesk版本链接)
+- 卷挂载点: 1个 (腾讯电脑管家)
+- 系统应用: 5个 (Windows Store应用)
+
+========================================
+详细清单 (20个有效软连接)
+========================================
+
+【ProgramData 目录】(2个)
+----------------------------------------
+1. C:\ProgramData\LogiOptionsPlus
+   → D:\ProgramData\LogiOptionsPlus
+   说明: Logitech Options+ 数据目录
+
+2. C:\ProgramData\Logishrd
+   → D:\ProgramData\Logishrd
+   说明: Logitech 硬件驱动数据
+
+【Program Files 目录】(2个)
+----------------------------------------
+3. C:\Program Files\Common Files\Adobe\HelpCfg
+   → F:\Oftenused\adobe\Photoshop\App\Program Files\Common Files\Adobe\HelpCfg
+   说明: Adobe Photoshop 帮助文件
+
+4. C:\Program Files (x86)\Common Files\Autodesk Shared\AdskLicensing\Current
+   → C:\Program Files (x86)\Common Files\Autodesk Shared\AdskLicensing\15.3.0.12981
+   说明: Autodesk 许可服务版本链接
+
+【用户配置目录 - D盘】(15个)
+----------------------------------------
+5. C:\Users\wh898\.android
+   → D:\Users\wh898\.android
+   说明: Android SDK/模拟器数据
+
+6. C:\Users\wh898\.antigravity
+   → D:\Users\wh898\.antigravity
+   说明: Antigravity AI工具配置
+
+7. C:\Users\wh898\.antigravity_tools
+   → D:\Users\wh898\.antigravity_tools
+   说明: Antigravity 工具集
+
+8. C:\Users\wh898\.cache
+   → D:\Users\wh898\.cache
+   说明: 应用程序缓存
+
+9. C:\Users\wh898\.cherrystudio
+   → D:\Users\wh898\.cherrystudio
+   说明: Cherry Studio LLM客户端
+
+10. C:\Users\wh898\.claude
+    → D:\Users\wh898\.claude
+    说明: Claude AI 配置
+
+11. C:\Users\wh898\.cline
+    → D:\Users\wh898\.cline
+    说明: Cline AI编程助手
+
+12. C:\Users\wh898\.continue
+    → D:\Users\wh898\.continue
+    说明: Continue AI编程插件
+
+13. C:\Users\wh898\.fiddler
+    → D:\Users\wh898\.fiddler
+    说明: Fiddler 网络抓包工具
+
+14. C:\Users\wh898\.gemini
+    → D:\Users\wh898\.gemini
+    说明: Google Gemini AI 配置
+
+15. C:\Users\wh898\.hvigor
+    → D:\Users\wh898\.hvigor
+    说明: Hvigor 构建工具(HarmonyOS)
+
+16. C:\Users\wh898\.lingma
+    → D:\Users\wh898\.lingma
+    说明: 通义灵码 AI编程助手
+
+17. C:\Users\wh898\.ohpm
+    → D:\Users\wh898\.ohpm
+    说明: OpenHarmony 包管理器
+
+18. C:\Users\wh898\.qwen
+    → D:\Users\wh898\.qwen
+    说明: 通义千问 AI 配置
+
+19. C:\Users\wh898\.ssh
+    → D:\Users\wh898\.ssh
+    说明: SSH 密钥和配置文件
+
+【特殊挂载点】(1个)
+----------------------------------------
+20. C:\Users\wh898\PCManger\mdfs
+    → Volume{d6cc17c5-1733-4085-bce7-964f1e9f5de9}\
+    说明: 腾讯电脑管家虚拟文件系统(卷挂载)
+
+【系统应用链接】(5个,通常无需手动恢复)
+----------------------------------------
+- C:\Windows\System32\config\systemprofile\AppData\Local\Microsoft\WindowsApps\ActionsMcpHost.exe
+- C:\Windows\System32\config\systemprofile\AppData\Local\Microsoft\WindowsApps\MicrosoftWindows.DesktopStickerEditorCentennial.exe
+- C:\Windows\System32\config\systemprofile\AppData\Local\Microsoft\WindowsApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\ActionsMcpHost.exe
+- C:\Windows\System32\config\systemprofile\AppData\Local\Microsoft\WindowsApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\MicrosoftWindows.DesktopStickerEditorCentennial.exe
+  说明: Windows Store 应用代理exe文件(系统自动管理)
+
+========================================
+磁盘空间节省估算
+========================================
+
+D盘存储的内容(原C盘):
+- 用户配置目录: 约15个AI工具和开发环境配置
+- Logitech数据: 鼠标键盘驱动配置和缓存
+- 估计节省C盘空间: 数GB级别(取决于各工具缓存大小)
+
+F盘存储的内容:
+- Adobe Photoshop 帮助文件
+
+========================================
+相关脚本工具
+========================================
+
+1. migrate-logitech-disk.ps1
+   用途: 迁移Logitech目录到D盘
+   
+2. export-symlinks.ps1
+   用途: 导出当前所有软连接到JSON备份
+   
+3. restore-symlinks.ps1
+   用途: 从备份恢复所有软连接
+   
+4. symlinks-backup.json
+   用途: 软连接配置备份数据
+
+========================================
+使用建议
+========================================
+
+✅ 定期备份:
+   运行 export-symlinks.ps1 更新 symlinks-backup.json
+   
+✅ 系统重装前:
+   1. 运行 export-symlinks.ps1 备份
+   2. 将 JSON 文件保存到云盘/U盘
+   3. 确保D盘/F盘数据已备份
+
+✅ 系统重装后:
+   1. 恢复D盘/F盘数据
+   2. 以管理员身份运行 restore-symlinks.ps1
+   3. 验证各应用程序正常运行
+
+⚠️ 注意事项:
+   - 创建软连接需要管理员权限
+   - 恢复前确保目标路径数据存在
+   - 某些程序可能不支持软连接
+   - 脚本需使用UTF-8 BOM编码
+
+========================================
+维护记录
+========================================
+
+2026-04-16:
+- 完成Logitech目录迁移 (LogiOptionsPlus, Logishrd)
+- 导出全部25个软连接配置
+- 创建完整的备份和恢复工具链
+- 生成此汇总文档
+
+========================================
+快速命令参考
+========================================
+
+# 查看某个路径是否为软连接
+Get-Item "C:\路径" | Select-Object FullName, Attributes, Target
+
+# 手动创建目录软连接
+New-Item -ItemType SymbolicLink -Path "C:\目标" -Target "D:\源"
+
+# 删除软连接(不删除目标数据)
+Remove-Item "C:\软连接路径" -Force
+
+# 扫描某目录下所有软连接
+Get-ChildItem "C:\路径" -Recurse -Attributes ReparsePoint | Select-Object FullName, Target
+
+========================================
+结束
+========================================

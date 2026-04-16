@@ -1,4 +1,4 @@
-# 迁移LogiOptionsPlus和Logishrd目录到D盘并创建软连接
+﻿# 迁移LogiOptionsPlus和Logishrd目录到D盘并创建软连接
 # 需要管理员权限运行
 
 $ErrorActionPreference = "Stop"

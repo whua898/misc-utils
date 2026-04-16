@@ -1,0 +1,147 @@
+﻿[
+    {
+        "Target":  "D:\\ProgramData\\Intel Package Cache",
+        "Source":  "C:\\ProgramData\\Intel Package Cache {1CEAC85D-2590-4760-800F-8DE5E91F3700}",
+        "Type":  "Directory"
+    },
+    {
+        "Target":  "D:\\ProgramData\\LogiOptionsPlus",
+        "Source":  "C:\\ProgramData\\LogiOptionsPlus",
+        "Type":  "Directory"
+    },
+    {
+        "Target":  "D:\\ProgramData\\Logishrd",
+        "Source":  "C:\\ProgramData\\Logishrd",
+        "Type":  "Directory"
+    },
+    {
+        "Target":  "D:\\ProgramData\\Package Cache",
+        "Source":  "C:\\ProgramData\\Package Cache",
+        "Type":  "Directory"
+    },
+    {
+        "Target":  "D:\\ProgramData\\Microsoft\\VisualStudio",
+        "Source":  "C:\\ProgramData\\Microsoft\\VisualStudio",
+        "Type":  "Directory"
+    },
+    {
+        "Target":  "F:\\Oftenused\\adobe\\Photoshop\\App\\Program Files\\Common Files\\Adobe\\HelpCfg",
+        "Source":  "C:\\Program Files\\Common Files\\Adobe\\HelpCfg",
+        "Type":  "Directory"
+    },
+    {
+        "Target":  "C:\\Program Files (x86)\\Common Files\\Autodesk Shared\\AdskLicensing\\15.3.0.12981",
+        "Source":  "C:\\Program Files (x86)\\Common Files\\Autodesk Shared\\AdskLicensing\\Current",
+        "Type":  "Directory"
+    },
+    {
+        "Target":  "未知",
+        "Source":  "C:\\Program Files (x86)\\Common Files\\Autodesk Shared\\Network License Manager\\.logger",
+        "Type":  "File"
+    },
+    {
+        "Target":  "D:\\Users\\wh898\\.android",
+        "Source":  "C:\\Users\\wh898\\.android",
+        "Type":  "Directory"
+    },
+    {
+        "Target":  "D:\\Users\\wh898\\.antigravity",
+        "Source":  "C:\\Users\\wh898\\.antigravity",
+        "Type":  "Directory"
+    },
+    {
+        "Target":  "D:\\Users\\wh898\\.antigravity_tools",
+        "Source":  "C:\\Users\\wh898\\.antigravity_tools",
+        "Type":  "Directory"
+    },
+    {
+        "Target":  "D:\\Users\\wh898\\.cache",
+        "Source":  "C:\\Users\\wh898\\.cache",
+        "Type":  "Directory"
+    },
+    {
+        "Target":  "D:\\Users\\wh898\\.cherrystudio",
+        "Source":  "C:\\Users\\wh898\\.cherrystudio",
+        "Type":  "Directory"
+    },
+    {
+        "Target":  "D:\\Users\\wh898\\.claude",
+        "Source":  "C:\\Users\\wh898\\.claude",
+        "Type":  "Directory"
+    },
+    {
+        "Target":  "D:\\Users\\wh898\\.cline",
+        "Source":  "C:\\Users\\wh898\\.cline",
+        "Type":  "Directory"
+    },
+    {
+        "Target":  "D:\\Users\\wh898\\.continue",
+        "Source":  "C:\\Users\\wh898\\.continue",
+        "Type":  "Directory"
+    },
+    {
+        "Target":  "D:\\Users\\wh898\\.fiddler",
+        "Source":  "C:\\Users\\wh898\\.fiddler",
+        "Type":  "Directory"
+    },
+    {
+        "Target":  "D:\\Users\\wh898\\.gemini",
+        "Source":  "C:\\Users\\wh898\\.gemini",
+        "Type":  "Directory"
+    },
+    {
+        "Target":  "D:\\Users\\wh898\\.hvigor",
+        "Source":  "C:\\Users\\wh898\\.hvigor",
+        "Type":  "Directory"
+    },
+    {
+        "Target":  "D:\\Users\\wh898\\.lingma",
+        "Source":  "C:\\Users\\wh898\\.lingma",
+        "Type":  "Directory"
+    },
+    {
+        "Target":  "D:\\Users\\wh898\\.lmstudio",
+        "Source":  "C:\\Users\\wh898\\.lmstudio",
+        "Type":  "Directory"
+    },
+    {
+        "Target":  "D:\\Users\\wh898\\.ohpm",
+        "Source":  "C:\\Users\\wh898\\.ohpm",
+        "Type":  "Directory"
+    },
+    {
+        "Target":  "D:\\Users\\wh898\\.qwen",
+        "Source":  "C:\\Users\\wh898\\.qwen",
+        "Type":  "Directory"
+    },
+    {
+        "Target":  "D:\\Users\\wh898\\.ssh",
+        "Source":  "C:\\Users\\wh898\\.ssh",
+        "Type":  "Directory"
+    },
+    {
+        "Target":  "Volume{d6cc17c5-1733-4085-bce7-964f1e9f5de9}\\",
+        "Source":  "C:\\Users\\wh898\\PCManger\\mdfs",
+        "Type":  "Directory"
+    },
+    {
+        "Target":  "未知",
+        "Source":  "C:\\Windows\\System32\\config\\systemprofile\\AppData\\Local\\Microsoft\\WindowsApps\\ActionsMcpHost.exe",
+        "Type":  "File"
+    },
+    {
+        "Target":  "未知",
+        "Source":  "C:\\Windows\\System32\\config\\systemprofile\\AppData\\Local\\Microsoft\\WindowsApps\\MicrosoftWindows.DesktopStickerEditorCentennial.exe",
+        "Type":  "File"
+    },
+    {
+        "Target":  "未知",
+        "Source":  "C:\\Windows\\System32\\config\\systemprofile\\AppData\\Local\\Microsoft\\WindowsApps\\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\\ActionsMcpHost.exe",
+        "Type":  "File"
+    },
+    {
+        "Target":  "未知",
+        "Source":  "C:\\Windows\\System32\\config\\systemprofile\\AppData\\Local\\Microsoft\\WindowsApps\\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\\MicrosoftWindows.DesktopStickerEditorCentennial.exe",
+        "Type":  "File"
+    }
+]

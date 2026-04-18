@@ -6,7 +6,43 @@
 
 ## 🛠️ 工具列表
 
-### 1. migrate-logitech-disk.ps1
+### 1. UWP应用回环解除配置 ⭐ 新增
+**用途**: 解除UWP应用的本地代理访问限制
+
+**说明**: 
+UWP应用运行在App Container沙盒中,默认禁止访问本地代理(127.0.0.1)。
+使用Windows自带工具`CheckNetIsolation`可解除此限制。
+
+**已配置的应用**:
+```powershell
+# 查看当前回环免除列表
+CheckNetIsolation LoopbackExempt -s
+
+# 添加应用到回环免除列表
+CheckNetIsolation LoopbackExempt -a -n="应用包名"
+
+# 示例: 添加Microsoft Store
+CheckNetIsolation LoopbackExempt -a -n="microsoft.windowsstore_8wekyb3d8bbwe"
+```
+
+**已添加的应用**:
+- Microsoft Store
+- Microsoft Edge
+- Windows Calculator
+- Windows Photos, Camera, Maps
+- Mail, Calendar, People
+- Skype, Xbox, Weather, News
+- OneNote, Sticky Notes, Paint
+- Your Phone, Feedback Hub
+
+**优势**:
+- ✅ 系统级解决方案,比代理规则更可靠
+- ✅ 一劳永逸,不需要维护域名列表
+- ✅ 配合域名直连规则=双重保障
+
+---
+
+### 2. migrate-logitech-disk.ps1
 **用途**: 将Logitech相关目录从C盘迁移到D盘并创建软连接
 
 **功能**:
@@ -28,7 +64,7 @@
 
 ---
 
-### 2. export-symlinks.ps1
+### 3. export-symlinks.ps1
 **用途**: 导出C盘所有软连接信息到JSON文件,用于备份
 
 **功能**:
@@ -58,7 +94,7 @@
 
 ---
 
-### 3. restore-symlinks.ps1
+### 4. restore-symlinks.ps1
 **用途**: 根据备份恢复C盘所有软连接
 
 **功能**:
@@ -193,15 +229,30 @@ Get-Item "C:\目标路径" | Select-Object FullName, Target
 
 ## 📦 相关文件
 
+### 软连接管理
 - `migrate-logitech-disk.ps1` - Logitech目录迁移脚本
 - `export-symlinks.ps1` - 软连接导出/备份脚本
 - `restore-symlinks.ps1` - 软连接恢复脚本
 - `symlinks-backup.json` - 软连接备份数据(JSON格式)
-- `SYMLINKS-README.md` - 本文档
+- `C盘软连接汇总.txt` - 软连接配置汇总文档
+
+### UWP配置
+- `SYMLINKS-README.md` - 本文档(含UWP回环解除配置说明)
+
+### 其他工具
+- `SetEnv.ps1` - 环境变量配置脚本(Java, Python, Git, Siemens Kasa)
+- `wh-cfnew.js` - Clash配置覆写脚本(负载轮询+微软直连)
+- `负载轮询+增订+覆规则.js` - 带订阅的覆写脚本
+- `负载轮询+覆规则.js` - 不带订阅的覆写脚本
 
 ---
 
 ## 📅 更新日志
+
+### 2026-04-18
+- 新增UWP应用回环解除配置
+- 添加Microsoft Store等20个UWP应用到网络隔离排除列表
+- 解决开启代理后UWP应用无法联网的问题
 
 ### 2026-04-16
 - 初始版本
@@ -217,4 +268,4 @@ Get-Item "C:\目标路径" | Select-Object FullName, Target
 
 ---
 
-**最后更新**: 2026-04-16
+**最后更新**: 2026-04-18

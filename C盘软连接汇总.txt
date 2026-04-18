@@ -1,7 +1,23 @@
 ========================================
 C盘软连接汇总报告
 生成时间: 2026-04-16
+更新时间: 2026-04-18 (新增UWP回环解除配置)
 ========================================
+
+【新增：UWP应用回环解除配置】
+已将以下UWP应用添加到网络隔离排除列表，允许访问本地代理：
+- Microsoft Store (microsoft.windowsstore_8wekyb3d8bbwe)
+- Microsoft Edge (microsoft.microsoftedge.stable_8wekyb3d8bbwe)
+- Windows Calculator (microsoft.windowscalculator_8wekyb3d8bbwe)
+- 其他16个常用UWP应用
+
+查看当前回环免除列表：
+  CheckNetIsolation LoopbackExempt -s
+
+添加应用到回环免除列表：
+  CheckNetIsolation LoopbackExempt -a -n="应用包名"
+
+详细说明请查看：SYMLINKS-README.md
 
 【统计摘要】
 总计软连接: 25个

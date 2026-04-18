@@ -97,10 +97,13 @@ if ($file -and $file.Length -gt 1GB) {
 
 如果 WAL 文件频繁增长,可能需要:
 
-### 1. 更新 Windows
+### 1. 更新 Windows (已解决)
 ```powershell
-# 检查并安装最新补丁
-winget install --id Microsoft.WindowsAppRuntime
+# Windows 10/11 最新版本已修复此问题
+# 确保系统更新到最新版本
+
+# 检查Windows版本
+Get-ComputerInfo | Select-Object WindowsVersion, WindowsBuildLabEx
 ```
 
 ### 2. 重置 AppRepository 数据库
@@ -183,7 +186,11 @@ Get-ScheduledTask -TaskName "Cleanup-CapabilityAccessManager-WAL" |
 
 ## 📝 使用流程建议
 
-### 首次使用
+### 当前状态
+Windows 10/11 最新版本已修复 WAL 文件无限增长的问题。
+如果系统已更新到最新版本,通常不需要此工具。
+
+### 如果仍有问题
 1. 运行 `cleanup-capability-wal.ps1` 立即清理
 2. 检查清理效果,确认系统正常
 3. 运行 `create-wal-cleanup-task.ps1` 创建自动任务
@@ -209,6 +216,10 @@ Get-ScheduledTask -TaskName "Cleanup-CapabilityAccessManager-WAL" |
 
 ## 📅 更新日志
 
+### 2026-04-18
+- 添加说明: Windows最新版本已修复此问题
+- 此工具主要用于旧版本Windows或特殊情况
+
 ### 2026-04-16
 - 初始版本
 - 创建自动清理脚本
@@ -217,6 +228,6 @@ Get-ScheduledTask -TaskName "Cleanup-CapabilityAccessManager-WAL" |
 
 ---
 
-**最后更新**: 2026-04-16  
+**最后更新**: 2026-04-18  
 **适用系统**: Windows 10/11  
 **需要权限**: 管理员

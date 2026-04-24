@@ -49,10 +49,14 @@ $symlinks = @(
         Description = "Autodesk licensing service"
     },
     @{
-        Source = "C:\Program Files (x86)\Common Files\Autodesk Shared\Network License Manager\.logger"
-        Target = "UNKNOWN"
-        Description = "Autodesk network license manager log (needs manual verification)"
-        ManualCheck = $true
+        Source = "C:\Program Files (x86)\Common Files\Autodesk Shared"
+        Target = "D:\Program Files (x86)\Common Files\Autodesk Shared"
+        Description = "Autodesk shared components and data"
+    },
+    @{
+        Source = "C:\Program Files (x86)\Microsoft"
+        Target = "D:\Program Files (x86)\Microsoft"
+        Description = "Microsoft x86 applications data"
     },
 
     # User directories (wh898)
@@ -122,6 +126,11 @@ $symlinks = @(
         Description = "LM Studio AI models and configs"
     },
     @{
+        Source = "C:\Users\wh898\AppData\Local\lm-studio-updater"
+        Target = "D:\Users\wh898\AppData\Local\lm-studio-updater"
+        Description = "LM Studio updater data"
+    },
+    @{
         Source = "C:\Users\wh898\.ohpm"
         Target = "D:\Users\wh898\.ohpm"
         Description = "OpenHarmony package manager"
@@ -135,6 +144,11 @@ $symlinks = @(
         Source = "C:\Users\wh898\.ssh"
         Target = "D:\Users\wh898\.ssh"
         Description = "SSH keys and configuration"
+    },
+    @{
+        Source = "C:\Users\wh898\AppData\Local\Google"
+        Target = "D:\Users\wh898\AppData\Local\Google"
+        Description = "Google app and Chrome data"
     },
     @{
         Source = "C:\Users\wh898\AppData\Local\Siemens"
@@ -169,6 +183,7 @@ $failCount = 0
 $manualCount = 0
 $migrateCount = 0
 $global:autoCreateDirs = $false  # Auto-create missing directories
+$global:disabledServices = @{}  # Track disabled services for restoration
 
 # Function to copy directory with progress
 function Copy-DirectoryWithProgress {
@@ -254,7 +269,7 @@ function Stop-ProcessesUsingPath {
                 $processPatterns += 'adobe*', 'photoshop*', 'illustrator*'
             }
             if ($pathLower -like '*autodesk*') {
-                $processPatterns += 'autodesk*', 'acad*', 'revit*'
+                $processPatterns += 'autodesk*', 'acad*', 'revit*', 'adsk*', 'adskservice*'
             }
             if ($pathLower -like '*android*') {
                 $processPatterns += 'adb*', 'android*', 'emulator*'
@@ -282,6 +297,9 @@ function Stop-ProcessesUsingPath {
             }
             if ($pathLower -like '*cline*') {
                 $processPatterns += 'cline*'
+            }
+            if ($pathLower -like '*google*' -or $pathLower -like '*chrome*') {
+                $processPatterns += 'google*', 'chrome*', 'crashpad*'
             }
             if ($pathLower -like '*gemini*') {
                 $processPatterns += 'gemini*'
@@ -352,7 +370,58 @@ function Stop-ProcessesUsingPath {
             }
         }
         
-        Write-Host "  Result: $stoppedCount stopped, $failedCount failed" -ForegroundColor Cyan
+        # Method 3: Try to stop related Windows services (for Autodesk and similar software)
+        Write-Host "  Checking for related Windows services..." -ForegroundColor Cyan
+        $servicePatterns = @()
+        $pathLower = $Path.ToLower()
+        
+        if ($pathLower -like '*autodesk*') {
+            $servicePatterns += 'AdskLicensing*', 'Autodesk*', 'FLEXnet*'
+        }
+        if ($pathLower -like '*siemens*') {
+            $servicePatterns += 'Siemens*', 'SolidEdge*', 'NX*'
+        }
+        if ($pathLower -like '*logitech*') {
+            $servicePatterns += 'Logi*', 'LGHUB*'
+        }
+        
+        $servicesStopped = 0
+        foreach ($pattern in $servicePatterns) {
+            $services = Get-Service -Name $pattern -ErrorAction SilentlyContinue
+            foreach ($service in $services) {
+                if ($service.Status -eq 'Running') {
+                    try {
+                        Write-Host "    Stopping service: $($service.DisplayName)..." -ForegroundColor Gray
+                        Stop-Service -Name $service.Name -Force -ErrorAction Stop
+                        Write-Host "    [OK] Service stopped" -ForegroundColor Green
+                        $servicesStopped++
+                        
+                        # Temporarily set startup type to Disabled to prevent auto-restart
+                        try {
+                            $originalStartupType = $service.StartType
+                            Set-Service -Name $service.Name -StartupType Disabled -ErrorAction SilentlyContinue
+                            Write-Host "    [INFO] Service startup type set to Disabled (was: $originalStartupType)" -ForegroundColor Cyan
+                            
+                            # Track this service for later restoration
+                            if (-not $global:disabledServices.ContainsKey($service.Name)) {
+                                $global:disabledServices[$service.Name] = $originalStartupType
+                            }
+                        } catch {
+                            Write-Host "    [WARN] Could not change startup type: $_" -ForegroundColor Yellow
+                        }
+                    } catch {
+                        Write-Host "    [WARN] Could not stop service: $_" -ForegroundColor Yellow
+                    }
+                }
+            }
+        }
+        
+        if ($servicesStopped -gt 0) {
+            Write-Host "  Stopped $servicesStopped service(s)" -ForegroundColor Cyan
+            Start-Sleep -Seconds 3  # Wait longer for services to fully stop
+        }
+        
+        Write-Host "  Result: $stoppedCount processes stopped, $failedCount failed, $servicesStopped services stopped" -ForegroundColor Cyan
         
         # Wait for file handles to be released
         Start-Sleep -Seconds 2
@@ -451,6 +520,28 @@ foreach ($link in $symlinks) {
                         Write-Host "  Deleted source directory" -ForegroundColor Green
                         $deleteSuccess = $true
                         Start-Sleep -Seconds 1
+                        
+                        # Restore services that were disabled
+                        if ($global:disabledServices.Count -gt 0) {
+                            Write-Host "  Restoring $($global:disabledServices.Count) service(s)..." -ForegroundColor Cyan
+                            foreach ($serviceName in $global:disabledServices.Keys) {
+                                $originalType = $global:disabledServices[$serviceName]
+                                try {
+                                    Set-Service -Name $serviceName -StartupType $originalType -ErrorAction SilentlyContinue
+                                    $serviceInfo = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+                                    if ($serviceInfo) {
+                                        Write-Host "    Restored: $($serviceInfo.DisplayName) to $originalType" -ForegroundColor Gray
+                                    } else {
+                                        Write-Host "    Restored: $serviceName to $originalType" -ForegroundColor Gray
+                                    }
+                                } catch {
+                                    Write-Host "    [WARN] Could not restore $serviceName`: $_" -ForegroundColor Yellow
+                                }
+                            }
+                            # Clear the tracking dictionary
+                            $global:disabledServices.Clear()
+                        }
+                        
                         break
                     } catch {
                         if ($retry -lt $maxRetries) {
@@ -478,8 +569,48 @@ foreach ($link in $symlinks) {
                                 }
                             }
                             
-                            Write-Host "  Retry $retry/$maxRetries..." -ForegroundColor Cyan
-                            Start-Sleep -Seconds 2
+                            # For Autodesk, use taskkill with /T flag to kill entire process tree
+                            if ($link.Source -like '*autodesk*') {
+                                Write-Host "  Using taskkill to force terminate Autodesk processes..." -ForegroundColor Cyan
+                                
+                                # First, find and kill the parent process that keeps restarting adskflex
+                                try {
+                                    $adskflexProc = Get-WmiObject Win32_Process | Where-Object { $_.Name -eq 'adskflex.exe' } | Select-Object -First 1
+                                    if ($adskflexProc) {
+                                        $parentPid = $adskflexProc.ParentProcessId
+                                        Write-Host "    Found parent process PID: $parentPid" -ForegroundColor Gray
+                                        
+                                        # Get parent process info
+                                        $parentProc = Get-WmiObject Win32_Process | Where-Object { $_.ProcessId -eq $parentPid }
+                                        if ($parentProc) {
+                                            Write-Host "    Parent process: $($parentProc.Name) (PID: $parentPid)" -ForegroundColor Gray
+                                            
+                                            # Kill the parent process tree
+                                            & taskkill /F /PID $parentPid /T 2>$null
+                                            Write-Host "    [OK] Killed parent process tree" -ForegroundColor Green
+                                        }
+                                    }
+                                } catch {
+                                    Write-Host "    [WARN] Could not find parent process: $_" -ForegroundColor Yellow
+                                }
+                                
+                                # Also kill any remaining adskflex processes
+                                try {
+                                    & taskkill /F /IM adskflex.exe /T 2>$null
+                                    & taskkill /F /IM AdskAccessServiceHost.exe /T 2>$null
+                                    & taskkill /F /IM AdskLicensingService.exe /T 2>$null
+                                    Write-Host "    [OK] Killed all Autodesk processes" -ForegroundColor Green
+                                } catch {
+                                    Write-Host "    [WARN] taskkill failed: $_" -ForegroundColor Yellow
+                                }
+                                
+                                # Wait longer for processes to fully terminate
+                                Write-Host "  Waiting 5 seconds for processes to terminate..." -ForegroundColor Cyan
+                                Start-Sleep -Seconds 5
+                            } else {
+                                Write-Host "  Retry $retry/$maxRetries..." -ForegroundColor Cyan
+                                Start-Sleep -Seconds 2
+                            }
                         } else {
                             Write-Host "  [FAIL] Could not delete after $maxRetries attempts: $_" -ForegroundColor Red
                             Write-Host "  Please manually close applications using: $pathKeyword" -ForegroundColor Yellow

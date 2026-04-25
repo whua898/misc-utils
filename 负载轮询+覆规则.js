@@ -1,10 +1,12 @@
 /**
  * Mihomo Party「高级配置重建脚本」
- * 版本：V16.0 (终极纪委·非破坏性重建版)
+ * 版本：V16.3 (终极纪委·强制轮换增强版)
  * 更新内容：
- * 1. 【架构升级】采用“新对象重建”代替“就地清创”。脚本不再修改原始配置，而是返回一个全新的配置对象，更加安全、专业。
+ * 1. 【架构升级】采用"新对象重建"代替"就地清创"。脚本不再修改原始配置，而是返回一个全新的配置对象，更加安全、专业。
  * 2. 【保留扩展】通过 `keepKeys` 数组，用户可以轻松指定需要从原始配置中保留的顶级键。
- * 3. 继承 V15.2 的所有优点：模块化、数字命名、URL标准化等。
+ * 3. 【优化结构】新增常量 `LOAD_BALANCE_TOLERANCE`，集中定义延迟容差，统一负载均衡与自动测速组配置。
+ * 4. 【强制轮换】新增「🔥 强制轮换」策略组，使用 lazy:false + interval:60 + Cloudflare 检测点，实现每分钟强制节点切换。
+ * 5. 【分离策略】区分「稳定轮询」和「强制轮换」两个独立策略组，满足不同场景需求。
  */
 
 function main(config) {
@@ -31,11 +33,43 @@ function main(config) {
     'geodata-mode',      // GeoIP/GeoSite 数据模式
   ];
 
-  // (3) 内部常量与函数 (已按要求调整顺序)
+  // (3) 内部常量与函数
   const normalizeUrl = (u) => String(u || '').trim().replace(/\/+$/, '');
   const mrs_defaults = { type: 'http', format: 'mrs', behavior: 'domain', interval: 86400 };
-  const provider_defaults = { interval: 86400, 'health-check': { enable: true, interval: 600, url: 'http://www.gstatic.com/generate_204' } };
-  const health_check_defaults = { url: 'http://www.gstatic.com/generate_204', interval: 300, timeout: 3000, 'max-failed-times': 3 };
+
+  // 🎯 负载均衡容差常量（单位：毫秒）
+  const LOAD_BALANCE_TOLERANCE = 300;
+
+  // ⏱️ 强制轮换间隔（单位：秒）- 实现每分钟轮换的关键
+  const ROTATION_INTERVAL = 55;
+
+  // 🔍 标准健康检查默认值（用于稳定策略组）
+  const health_check_defaults = {
+    url: 'http://www.gstatic.com/generate_204',
+    interval: 300,
+    timeout: 3000,
+    'max-failed-times': 3,
+    lazy: true  // 懒加载，按需检测
+  };
+
+  // 🔥 强制轮换健康检查配置（高频检测 + 禁用懒加载）
+  const rotation_health_check = {
+    url: 'http://cp.cloudflare.com/generate_204',  // Cloudflare 更活跃的检测点
+    interval: ROTATION_INTERVAL,                    // 60秒检测一次
+    timeout: 3000,
+    'max-failed-times': 1,                          // 失败1次即标记
+    lazy: false                                     // 强制每次检测，不懒加载
+  };
+
+  // 📦 Provider 默认值
+  const provider_defaults = {
+    interval: 86400,
+    'health-check': {
+      enable: true,
+      interval: 600,
+      url: 'http://www.gstatic.com/generate_204'
+    }
+  };
 
   // (4) 圣衣模板
   const templateConfig = {
@@ -61,17 +95,27 @@ function main(config) {
     },
 
     'proxy-groups': [
-        { name: "🔝 节点选择", type: "select", proxies: ["🔄 轮询均衡", "⛓️ 保持均衡", "⚡ 自动选择", "🎯 全球直连"], "include-all": true },
-        { name: "🔄 轮询均衡", type: "load-balance", strategy: "round-robin", ...health_check_defaults, "include-all": true },
-        { name: "⛓️ 保持均衡", type: "load-balance", strategy: "consistent-hashing", ...health_check_defaults, "include-all": true },
-        { name: "⚡ 自动选择", type: "url-test", tolerance: 50, ...health_check_defaults, "include-all": true },
+        // 🔝 顶层选择器 - 将「强制轮换」放在首位
+        { name: "🔝 节点选择", type: "select", proxies: ["🔥 强制轮换", "🔄 轮询均衡", "⛓️ 保持均衡", "⚡ 自动选择", "🎯 全球直连"], "include-all": true },
+        
+        // 🔥 强制轮换组 - 每分钟强制切换节点（核心功能）
+        { name: "🔥 强制轮换", type: "load-balance", strategy: "round-robin", tolerance: LOAD_BALANCE_TOLERANCE, ...rotation_health_check, "include-all": true },
+        
+        // 🔄 稳定轮询组 - 5分钟检测一次，适合长期稳定连接
+        { name: "🔄 轮询均衡", type: "load-balance", strategy: "round-robin", tolerance: LOAD_BALANCE_TOLERANCE, ...health_check_defaults, "include-all": true },
+        
+        // ⛓️ 一致性哈希组 - 保持会话稳定性
+        { name: "⛓️ 保持均衡", type: "load-balance", strategy: "consistent-hashing", tolerance: LOAD_BALANCE_TOLERANCE, ...health_check_defaults, "include-all": true },
+        
+        // ⚡ 自动选择组 - 基于延迟自动选择最优节点
+        { name: "⚡ 自动选择", type: "url-test", tolerance: LOAD_BALANCE_TOLERANCE, ...health_check_defaults, "include-all": true },
         { name: "▶️ YouTube", type: "select", proxies: ["🔝 节点选择", "⚡ 自动选择"] },
         { name: "🔎 Google", type: "select", proxies: ["🔝 节点选择", "⚡ 自动选择"] },
         { name: "🐙 GitHub", type: "select", proxies: ["🔝 节点选择", "🎯 全球直连"] },
         { name: "✈️ 电报信息", type: "select", proxies: ["🔝 节点选择", "🎯 全球直连"] },
         { name: "Ⓜ️ 微软服务", type: "select", proxies: ["🎯 全球直连", "🔝 节点选择"] },
         { name: "🍏 苹果服务", type: "select", proxies: ["🎯 全球直连", "🔝 节点选择"] },
-        { name: "🐟 漏网之鱼", type: "select", proxies: ["🔝 节点选择", "🔄 轮询均衡", "⛓️ 保持均衡", "🎯 全球直连", "⚡ 自动选择"] },
+        { name: "🐟 漏网之鱼", type: "select", proxies: ["🔝 节点选择", "🔥 强制轮换", "🔄 轮询均衡", "⛓️ 保持均衡", "🎯 全球直连", "⚡ 自动选择"] },
         { name: "🎯 全球直连", type: "select", proxies: ["DIRECT"] },
         { name: "🚫 全球拦截", type: "select", proxies: ["REJECT"] },
         // AI服务专用组 - 直连避免代理冲突

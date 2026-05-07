@@ -1,4 +1,4 @@
-﻿[
+[
     {
         "Target":  "D:\\ProgramData\\Intel Package Cache",
         "Source":  "C:\\ProgramData\\Intel Package Cache {1CEAC85D-2590-4760-800F-8DE5E91F3700}",
@@ -112,6 +112,11 @@
     {
         "Target":  "D:\\Users\\wh898\\.qwen",
         "Source":  "C:\\Users\\wh898\\.qwen",
+        "Type":  "Directory"
+    },
+    {
+        "Target":  "D:\\Users\\wh898\\.trae-cn",
+        "Source":  "C:\\Users\\wh898\\.trae-cn",
         "Type":  "Directory"
     },
     {

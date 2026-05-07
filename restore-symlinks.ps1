@@ -1,744 +1,476 @@
-# Restore C drive symlinks with auto-migration
-# Requires administrator privileges
-# Used after system reinstallation to quickly rebuild all symlinks
-# Features: Skip if exists, auto-detect locking processes, smart recovery
+<#
+.SYNOPSIS
+    恢复 C 盘符号链接（重装系统后重建符号链接用）
+.DESCRIPTION
+    自动将 C 盘数据迁移到 D:/F: 等目标盘，创建目录符号链接。
+    功能：跳过已存在的符号链接、自动检测锁定进程、智能恢复。
+.NOTES
+    需要管理员权限运行。
+#>
 
-$ErrorActionPreference = "Continue"  # Continue on errors instead of stopping
+#Requires -RunAsAdministrator
 
-Write-Host "=== Restoring C Drive Symlinks ===" -ForegroundColor Cyan
-Write-Host ""
+$ErrorActionPreference = "Continue"
 
-# Define all symlink configurations
-$symlinks = @(
-    # ProgramData directories
-    @{
-        Source = "C:\ProgramData\Intel Package Cache {1CEAC85D-2590-4760-800F-8DE5E91F3700}"
-        Target = "D:\ProgramData\Intel Package Cache"
-        Description = "Intel Package Cache"
-    },
-    @{
-        Source = "C:\ProgramData\LogiOptionsPlus"
-        Target = "D:\ProgramData\LogiOptionsPlus"
-        Description = "Logitech Options+ data directory"
-    },
-    @{
-        Source = "C:\ProgramData\Logishrd"
-        Target = "D:\ProgramData\Logishrd"
-        Description = "Logitech hardware driver data"
-    },
-    @{
-        Source = "C:\ProgramData\Microsoft\VisualStudio"
-        Target = "D:\ProgramData\Microsoft\VisualStudio"
-        Description = "Visual Studio shared data"
-    },
-    @{
-        Source = "C:\ProgramData\Package Cache"
-        Target = "D:\ProgramData\Package Cache"
-        Description = "Windows Installer Package Cache"
-    },
+# ── 辅助函数 ──────────────────────────────────────────────────────────────────
 
-    # Program Files directories
-    @{
-        Source = "C:\Program Files\Common Files\Adobe\HelpCfg"
-        Target = "F:\Oftenused\adobe\Photoshop\App\Program Files\Common Files\Adobe\HelpCfg"
-        Description = "Adobe Help configuration"
-    },
-    @{
-        Source = "C:\Program Files (x86)\Common Files\Autodesk Shared\AdskLicensing\Current"
-        Target = "C:\Program Files (x86)\Common Files\Autodesk Shared\AdskLicensing\15.3.0.12981"
-        Description = "Autodesk licensing service"
-    },
-    @{
-        Source = "C:\Program Files (x86)\Common Files\Autodesk Shared"
-        Target = "D:\Program Files (x86)\Common Files\Autodesk Shared"
-        Description = "Autodesk shared components and data"
-    },
-    @{
-        Source = "C:\Program Files (x86)\Microsoft"
-        Target = "D:\Program Files (x86)\Microsoft"
-        Description = "Microsoft x86 applications data"
-    },
+function Write-ProgressItem {
+    param([int]$Index, [int]$Total, [string]$Desc)
+    Write-Host "----------------------------------------" -ForegroundColor Gray
+    Write-Host "[$Index/$Total] $Desc" -ForegroundColor Cyan
+}
 
-    # User directories (wh898)
-    @{
-        Source = "C:\Users\wh898\.android"
-        Target = "D:\Users\wh898\.android"
-        Description = "Android SDK/Emulator data"
-    },
-    @{
-        Source = "C:\Users\wh898\.antigravity"
-        Target = "D:\Users\wh898\.antigravity"
-        Description = "Antigravity AI tool configuration"
-    },
-    @{
-        Source = "C:\Users\wh898\.antigravity_tools"
-        Target = "D:\Users\wh898\.antigravity_tools"
-        Description = "Antigravity tools"
-    },
-    @{
-        Source = "C:\Users\wh898\.cache"
-        Target = "D:\Users\wh898\.cache"
-        Description = "Application cache"
-    },
-    @{
-        Source = "C:\Users\wh898\.cherrystudio"
-        Target = "D:\Users\wh898\.cherrystudio"
-        Description = "Cherry Studio LLM client"
-    },
-    @{
-        Source = "C:\Users\wh898\.claude"
-        Target = "D:\Users\wh898\.claude"
-        Description = "Claude AI configuration"
-    },
-    @{
-        Source = "C:\Users\wh898\.cline"
-        Target = "D:\Users\wh898\.cline"
-        Description = "Cline AI programming assistant"
-    },
-    @{
-        Source = "C:\Users\wh898\.continue"
-        Target = "D:\Users\wh898\.continue"
-        Description = "Continue AI programming plugin"
-    },
-    @{
-        Source = "C:\Users\wh898\.fiddler"
-        Target = "D:\Users\wh898\.fiddler"
-        Description = "Fiddler web debugging proxy"
-    },
-    @{
-        Source = "C:\Users\wh898\.gemini"
-        Target = "D:\Users\wh898\.gemini"
-        Description = "Google Gemini AI configuration"
-    },
-    @{
-        Source = "C:\Users\wh898\.hvigor"
-        Target = "D:\Users\wh898\.hvigor"
-        Description = "Hvigor build tool (HarmonyOS)"
-    },
-    @{
-        Source = "C:\Users\wh898\.lingma"
-        Target = "D:\Users\wh898\.lingma"
-        Description = "Tongyi Lingma AI assistant"
-    },
-    @{
-        Source = "C:\Users\wh898\.lmstudio"
-        Target = "D:\Users\wh898\.lmstudio"
-        Description = "LM Studio AI models and configs"
-    },
-    @{
-        Source = "C:\Users\wh898\AppData\Local\lm-studio-updater"
-        Target = "D:\Users\wh898\AppData\Local\lm-studio-updater"
-        Description = "LM Studio updater data"
-    },
-    @{
-        Source = "C:\Users\wh898\.ohpm"
-        Target = "D:\Users\wh898\.ohpm"
-        Description = "OpenHarmony package manager"
-    },
-    @{
-        Source = "C:\Users\wh898\.qwen"
-        Target = "D:\Users\wh898\.qwen"
-        Description = "Tongyi Qwen AI configuration"
-    },
-    @{
-        Source = "C:\Users\wh898\.ssh"
-        Target = "D:\Users\wh898\.ssh"
-        Description = "SSH keys and configuration"
-    },
-    @{
-        Source = "C:\Users\wh898\AppData\Local\Google"
-        Target = "D:\Users\wh898\AppData\Local\Google"
-        Description = "Google app and Chrome data"
-    },
-    @{
-        Source = "C:\Users\wh898\AppData\Local\Siemens"
-        Target = "D:\Users\wh898\AppData\Local\Siemens"
-        Description = "Siemens software data (NX, Solid Edge, etc.)"
-    },
-    @{
-        Source = "C:\Users\wh898\PCManger\mdfs"
-        Target = "Volume{d6cc17c5-1733-4085-bce7-964f1e9f5de9}\"
-        Description = "Tencent PC Manager virtual filesystem (volume mount)"
-    }
-)
+function Write-Status($Text, $Color = "Gray") {
+    Write-Host "  $Text" -ForegroundColor $Color
+}
 
-# Windows system app links (usually handled automatically by system)
-$systemLinks = @(
-    "C:\Windows\System32\config\systemprofile\AppData\Local\Microsoft\WindowsApps\ActionsMcpHost.exe",
-    "C:\Windows\System32\config\systemprofile\AppData\Local\Microsoft\WindowsApps\MicrosoftWindows.DesktopStickerEditorCentennial.exe",
-    "C:\Windows\System32\config\systemprofile\AppData\Local\Microsoft\WindowsApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\ActionsMcpHost.exe",
-    "C:\Windows\System32\config\systemprofile\AppData\Local\Microsoft\WindowsApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\MicrosoftWindows.DesktopStickerEditorCentennial.exe"
-)
+# ── 1. 数据迁移（robocopy 封装） ──────────────────────────────────────────────
 
-Write-Host "Found $($symlinks.Count) symlinks to process" -ForegroundColor Yellow
-Write-Host "Running with administrator privileges: $(([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))" -ForegroundColor Cyan
-Write-Host ""
-Write-Host "Mode: Auto-migrate C: data to D: and create symlinks" -ForegroundColor Green
-Write-Host ""
-
-# Statistics
-$successCount = 0
-$skipCount = 0
-$failCount = 0
-$manualCount = 0
-$migrateCount = 0
-$global:autoCreateDirs = $false  # Auto-create missing directories
-$global:disabledServices = @{}  # Track disabled services for restoration
-
-# Function to copy directory with progress
-function Copy-DirectoryWithProgress {
+function Invoke-Robocopy {
+    <#
+    .SYNOPSIS
+        使用 robocopy 拷贝目录，返回 $true/$false
+    .PARAMETER Source
+        源路径
+    .PARAMETER Dest
+        目标路径
+    .PARAMETER Retry
+        重试次数，默认 3
+    .PARAMETER WaitSec
+        重试间隔秒数，默认 5
+    #>
     param(
-        [string]$SourcePath,
-        [string]$TargetPath
+        [string]$Source,
+        [string]$Dest,
+        [int]$Retry = 3,
+        [int]$WaitSec = 5
     )
-    
-    Write-Host "  Starting data migration..." -ForegroundColor Cyan
-    Write-Host "  From: $SourcePath" -ForegroundColor Gray
-    Write-Host "  To:   $TargetPath" -ForegroundColor Gray
-    
+
+    # 确保目标目录存在
+    $parent = Split-Path $Dest -Parent
+    if ($parent -and -not (Test-Path $parent)) {
+        New-Item -ItemType Directory -Path $parent -Force | Out-Null
+    }
+
+    Write-Status "从源路径复制数据..." -Color Cyan
+    Write-Status "来源: $Source" -Color Gray
+    Write-Status "目标: $Dest" -Color Gray
+
     try {
-        # Create target directory if not exists
-        if (-not (Test-Path $TargetPath)) {
-            New-Item -ItemType Directory -Path $TargetPath -Force | Out-Null
-        }
-        
-        # Use robocopy for reliable copy with progress
-        $robocopyArgs = @(
-            $SourcePath.TrimEnd('\'),
-            $TargetPath.TrimEnd('\'),
-            '/E',           # Copy subdirectories including empty ones
-            '/COPY:DAT',    # Copy Data, Attributes, Timestamps
-            '/R:3',         # Retry 3 times on failure
-            '/W:5',         # Wait 5 seconds between retries
-            '/NP',          # No progress (we'll show our own)
-            '/NFL',         # No file list
-            '/NDL'          # No directory list
+        $argsList = @(
+            $Source.TrimEnd('\'),
+            $Dest.TrimEnd('\'),
+            '/E',          # 包含子目录（含空目录）
+            '/COPY:DAT',   # 复制数据/属性/时间戳
+            "/R:$Retry",
+            "/W:$WaitSec",
+            '/NP', '/NFL', '/NDL'
         )
-        
-        Write-Host "  Copying files (this may take a while)..." -ForegroundColor Yellow
-        $result = Start-Process -FilePath "robocopy.exe" -ArgumentList $robocopyArgs -Wait -NoNewWindow -PassThru
-        
-        if ($result.ExitCode -lt 8) {
-            Write-Host "  [OK] Data migration completed" -ForegroundColor Green
+
+        $proc = Start-Process -FilePath "robocopy.exe" -ArgumentList $argsList `
+            -Wait -NoNewWindow -PassThru
+
+        if ($proc.ExitCode -lt 8) {
+            Write-Status "[OK] 数据迁移完成" -Color Green
             return $true
-        } else {
-            Write-Host "  [FAIL] Robocopy failed with exit code: $($result.ExitCode)" -ForegroundColor Red
-            return $false
         }
+
+        Write-Status "[WARN] robocopy 退出码: $($proc.ExitCode)" -Color Yellow
+        return $false
     } catch {
-        Write-Host "  [FAIL] Migration error: $_" -ForegroundColor Red
+        Write-Status "[FAIL] 迁移异常: $_" -Color Red
         return $false
     }
 }
 
-# Function to detect and kill processes using a path (optimized)
-function Stop-ProcessesUsingPath {
-    param(
-        [string]$Path
-    )
-    
-    Write-Host "  Checking for locking processes..." -ForegroundColor Cyan
-    
+# ── 2. 进程/服务管控 ──────────────────────────────────────────────────────────
+
+function Stop-LockingProcesses {
+    <#
+    .SYNOPSIS
+        尝试终止锁定指定路径的进程与服务。
+        返回 $true（即使部分失败也继续）。
+    #>
+    param([string]$Path)
+
     try {
-        $lockingProcesses = @()
-        
-        # Method 1: Use openfiles command (built-in Windows tool)
-        try {
-            $openfilesOutput = openfiles /query /fo CSV 2>$null | ConvertFrom-Csv
-            $lockingProcesses += $openfilesOutput | Where-Object {
-                $_.'Accessed By' -ne 'N/A' -and 
-                $_.'Open File (Path\executable)' -like "$Path*"
-            } | Select-Object -Unique 'ID Process', 'Accessed By'
-        } catch {
-            # openfiles may not be available or enabled
-        }
-        
-        # Method 2: Check common applications by name pattern
-        if ($lockingProcesses.Count -eq 0) {
-            $pathLower = $Path.ToLower()
-            $processPatterns = @()
-            
-            # Extract keywords from path to match process names
-            if ($pathLower -like '*siemens*' -or $pathLower -like '*nx*' -or $pathLower -like '*solidedge*') {
-                $processPatterns += 'ug*', 'nx*', 'solid*', 'teamcenter*'
-            }
-            if ($pathLower -like '*logitech*' -or $pathLower -like '*logi*') {
-                $processPatterns += 'logi*', 'lghub*'
-            }
-            if ($pathLower -like '*adobe*') {
-                $processPatterns += 'adobe*', 'photoshop*', 'illustrator*'
-            }
-            if ($pathLower -like '*autodesk*') {
-                $processPatterns += 'autodesk*', 'acad*', 'revit*', 'adsk*', 'adskservice*'
-            }
-            if ($pathLower -like '*android*') {
-                $processPatterns += 'adb*', 'android*', 'emulator*'
-            }
-            if ($pathLower -like '*java*') {
-                $processPatterns += 'java*', 'jdk*'
-            }
-            if ($pathLower -like '*fiddler*') {
-                $processPatterns += 'fiddler*'
-            }
-            if ($pathLower -like '*studio*' -or $pathLower -like '*code*') {
-                $processPatterns += 'code*', 'studio*', 'devenv*'
-            }
-            if ($pathLower -like '*lingma*' -or $pathLower -like '*tongyi*') {
-                $processPatterns += 'lingma*', 'tongyi*'
-            }
-            if ($pathLower -like '*lmstudio*') {
-                $processPatterns += 'lmstudio*'
-            }
-            if ($pathLower -like '*cherrystudio*') {
-                $processPatterns += 'cherry*', 'studio*'
-            }
-            if ($pathLower -like '*claude*') {
-                $processPatterns += 'claude*'
-            }
-            if ($pathLower -like '*cline*') {
-                $processPatterns += 'cline*'
-            }
-            if ($pathLower -like '*google*' -or $pathLower -like '*chrome*') {
-                $processPatterns += 'google*', 'chrome*', 'crashpad*'
-            }
-            if ($pathLower -like '*gemini*') {
-                $processPatterns += 'gemini*'
-            }
-            if ($pathLower -like '*qwen*') {
-                $processPatterns += 'qwen*'
-            }
-            
-            # Always check explorer as it commonly locks folders
-            $processPatterns += 'explorer'
-            
-            foreach ($pattern in $processPatterns) {
-                $procs = Get-Process -Name $pattern -ErrorAction SilentlyContinue
-                if ($procs) {
-                    $lockingProcesses += $procs | Select-Object Id, ProcessName, @{N='Info';E={'Matched by name pattern'}}
-                }
-            }
-        }
-        
-        if ($lockingProcesses.Count -eq 0) {
-            Write-Host "  [OK] No locking processes detected" -ForegroundColor Green
-            return $true
-        }
-        
-        Write-Host "  Found $($lockingProcesses.Count) potential locking process(es):" -ForegroundColor Yellow
-        foreach ($proc in $lockingProcesses) {
-            $procName = if ($proc.'Accessed By') { $proc.'Accessed By' } else { $proc.ProcessName }
-            $procId = if ($proc.'ID Process') { $proc.'ID Process' } else { $proc.Id }
-            Write-Host "    - $procName (PID: $procId)" -ForegroundColor Gray
-        }
-        
-        Write-Host "  Attempting to stop processes..." -ForegroundColor Cyan
-        
-        $stoppedCount = 0
-        $failedCount = 0
-        
-        foreach ($proc in $lockingProcesses) {
-            $procId = if ($proc.'ID Process') { [int]$proc.'ID Process' } else { $proc.Id }
-            $procName = if ($proc.'Accessed By') { $proc.'Accessed By' } else { $proc.ProcessName }
-            
-            # Skip critical system processes
-            if ($procName -eq 'explorer') {
-                Write-Host "    Skipping explorer.exe (system process)" -ForegroundColor Yellow
-                continue
-            }
-            
-            try {
-                Write-Host "    Stopping $procName (PID: $procId)..." -ForegroundColor Gray
-                Stop-Process -Id $procId -Force -ErrorAction Stop
-                
-                # Wait for process to exit
-                $waitCount = 0
-                while ((Get-Process -Id $procId -ErrorAction SilentlyContinue) -and $waitCount -lt 10) {
-                    Start-Sleep -Milliseconds 500
-                    $waitCount++
-                }
-                
-                if (-not (Get-Process -Id $procId -ErrorAction SilentlyContinue)) {
-                    Write-Host "    [OK] Stopped successfully" -ForegroundColor Green
-                    $stoppedCount++
-                } else {
-                    Write-Host "    [WARN] Process still running" -ForegroundColor Yellow
-                    $failedCount++
-                }
-            } catch {
-                Write-Host "    [WARN] Could not stop $procName`: $_" -ForegroundColor Yellow
-                $failedCount++
-            }
-        }
-        
-        # Method 3: Try to stop related Windows services (for Autodesk and similar software)
-        Write-Host "  Checking for related Windows services..." -ForegroundColor Cyan
-        $servicePatterns = @()
+        $stopped = @()
         $pathLower = $Path.ToLower()
-        
-        if ($pathLower -like '*autodesk*') {
-            $servicePatterns += 'AdskLicensing*', 'Autodesk*', 'FLEXnet*'
+        $patterns = @()
+
+        # ── 根据路径关键词匹配进程名 ──
+        $keywordMap = @(
+            @('*siemens*', 'ug*', 'nx*', 'solid*', 'teamcenter*'),
+            @('*logitech*', 'logi*', 'lghub*'),
+            @('*adobe*', 'adobe*', 'photoshop*', 'illustrator*'),
+            @('*autodesk*', 'autodesk*', 'acad*', 'revit*', 'adsk*', 'adskservice*'),
+            @('*android*', 'adb*', 'android*', 'emulator*'),
+            @('*fiddler*', 'fiddler*'),
+            @('*lmstudio*', 'lmstudio*'),
+            @('*cherry*', 'cherry*'),
+            @('*claude*', 'claude*'),
+            @('*cline*', 'cline*'),
+            @('*gemini*', 'gemini*'),
+            @('*qwen*', 'qwen*'),
+            @('*google*', 'google*', 'chrome*', 'crashpad*'),
+            @('*lingma*', 'lingma*', 'tongyi*', 'trae*'),
+            # 编辑器/IDE：限制更精确避免误杀
+            @('*visualstudio*', 'devenv*'),
+            @('*pycharm*', 'pycharm*'),
+            @('*idea*', 'idea*'),
+            # 目录名本身包含 studio/code 的再检查
+            @('*studio*', 'studio*'),
+            @('*code*', 'code*')
+        )
+
+        foreach ($map in $keywordMap) {
+            if ($pathLower -like $map[0]) {
+                for ($i = 1; $i -lt $map.Count; $i++) {
+                    $patterns += $map[$i]
+                }
+            }
         }
-        if ($pathLower -like '*siemens*') {
-            $servicePatterns += 'Siemens*', 'SolidEdge*', 'NX*'
+
+        # 始终检查 explorer
+        $patterns += 'explorer'
+
+        # 去重
+        $patterns = $patterns | Select-Object -Unique
+
+        foreach ($pattern in $patterns) {
+            $procs = Get-Process -Name $pattern -ErrorAction SilentlyContinue
+            foreach ($p in $procs) {
+                # 跳过 explorer
+                if ($p.ProcessName -eq 'explorer') { continue }
+
+                try {
+                    Stop-Process -Id $p.Id -Force -ErrorAction Stop
+                    Write-Status "已终止: $($p.ProcessName) (PID: $($p.Id))" -Color Gray
+                    $stopped += $p.Id
+                } catch {
+                    # 忽略已退出的进程
+                }
+            }
+        }
+
+        if ($patterns.Count -eq 0) {
+            Write-Status "[OK] 未检测到锁定进程" -Color Green
+        } elseif ($stopped.Count -gt 0) {
+            Write-Status "已终止 $($stopped.Count) 个进程" -Color Cyan
+        }
+
+        # ── 停止相关 Windows 服务 ──
+        $svcPatterns = @()
+        if ($pathLower -like '*autodesk*') {
+            $svcPatterns += 'AdskLicensing*', 'Autodesk*', 'FLEXnet*'
+        }
+        if ($pathLower -like '*siemens*' -or $pathLower -like '*solidedge*' -or $pathLower -like '*nx*') {
+            $svcPatterns += 'Siemens*', 'SolidEdge*', 'NX*'
         }
         if ($pathLower -like '*logitech*') {
-            $servicePatterns += 'Logi*', 'LGHUB*'
+            $svcPatterns += 'Logi*', 'LGHUB*'
         }
-        
-        $servicesStopped = 0
-        foreach ($pattern in $servicePatterns) {
-            $services = Get-Service -Name $pattern -ErrorAction SilentlyContinue
-            foreach ($service in $services) {
-                if ($service.Status -eq 'Running') {
-                    try {
-                        Write-Host "    Stopping service: $($service.DisplayName)..." -ForegroundColor Gray
-                        Stop-Service -Name $service.Name -Force -ErrorAction Stop
-                        Write-Host "    [OK] Service stopped" -ForegroundColor Green
-                        $servicesStopped++
-                        
-                        # Temporarily set startup type to Disabled to prevent auto-restart
-                        try {
-                            $originalStartupType = $service.StartType
-                            Set-Service -Name $service.Name -StartupType Disabled -ErrorAction SilentlyContinue
-                            Write-Host "    [INFO] Service startup type set to Disabled (was: $originalStartupType)" -ForegroundColor Cyan
-                            
-                            # Track this service for later restoration
-                            if (-not $global:disabledServices.ContainsKey($service.Name)) {
-                                $global:disabledServices[$service.Name] = $originalStartupType
-                            }
-                        } catch {
-                            Write-Host "    [WARN] Could not change startup type: $_" -ForegroundColor Yellow
-                        }
-                    } catch {
-                        Write-Host "    [WARN] Could not stop service: $_" -ForegroundColor Yellow
-                    }
+
+        foreach ($pattern in $svcPatterns) {
+            $svc = Get-Service -Name $pattern -ErrorAction SilentlyContinue
+            if ($svc -and $svc.Status -eq 'Running') {
+                try {
+                    Write-Status "停止服务: $($svc.DisplayName)..." -Color Gray
+                    Stop-Service -Name $svc.Name -Force -ErrorAction Stop
+                    Set-Service -Name $svc.Name -StartupType Disabled -ErrorAction SilentlyContinue
+                    Write-Status "[OK] 服务已停止" -Color Green
+                    # 记录以便恢复
+                    $script:stoppedServices[$svc.Name] = $svc.StartType
+                } catch {
+                    Write-Status "[WARN] 未能停止服务: $_" -Color Yellow
                 }
             }
         }
-        
-        if ($servicesStopped -gt 0) {
-            Write-Host "  Stopped $servicesStopped service(s)" -ForegroundColor Cyan
-            Start-Sleep -Seconds 3  # Wait longer for services to fully stop
+
+        # 等 2 秒让句柄释放
+        if ($stopped.Count -gt 0 -or (Get-Service -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq 'Stopped' -and $_.Name -in @($svcPatterns | ForEach-Object { Get-Service -Name $_ -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name }) })) {
+            Start-Sleep -Seconds 2
         }
-        
-        Write-Host "  Result: $stoppedCount processes stopped, $failedCount failed, $servicesStopped services stopped" -ForegroundColor Cyan
-        
-        # Wait for file handles to be released
-        Start-Sleep -Seconds 2
-        
+
         return $true
     } catch {
-        Write-Host "  [WARN] Process detection error: $_" -ForegroundColor Yellow
-        return $true  # Continue anyway
+        Write-Status "[WARN] 进程检测发生异常: $_" -Color Yellow
+        return $true
     }
 }
 
-foreach ($link in $symlinks) {
-    Write-Host "----------------------------------------" -ForegroundColor Gray
-    Write-Host "[$($symlinks.IndexOf($link) + 1)/$($symlinks.Count)] $($link.Description)" -ForegroundColor Cyan
+function Restore-Services {
+    <#
+    .SYNOPSIS
+        恢复之前临时禁用的服务。
+    #>
+    if ($script:stoppedServices.Count -eq 0) { return }
 
-    # Check if manual confirmation is needed
-    if ($link.ManualCheck) {
-        Write-Host "Status: [SKIP] Manual verification required" -ForegroundColor Yellow
-        Write-Host "Source: $($link.Source)" -ForegroundColor Gray
-        Write-Host "Target: $($link.Target)" -ForegroundColor Gray
-        Write-Host "Tip: Check backup to determine correct target path" -ForegroundColor Yellow
-        $manualCount++
+    Write-Status "恢复 $($script:stoppedServices.Count) 个服务..." -Color Cyan
+    foreach ($kv in $script:stoppedServices.GetEnumerator()) {
+        try {
+            Set-Service -Name $kv.Key -StartupType $kv.Value -ErrorAction SilentlyContinue
+            Write-Status "  $($kv.Key) → $($kv.Value)" -Color Gray
+        } catch {
+            Write-Status "  [WARN] 恢复 $($kv.Key) 失败: $_" -Color Yellow
+        }
+    }
+    $script:stoppedServices.Clear()
+}
+
+# ── 3. 强制删除目录（带重试+自动终止锁定进程） ─────────────────────────────────
+
+function Remove-DirectoryWithForce {
+    <#
+    .SYNOPSIS
+        递归删除目录，遇到锁定自动查杀进程后重试。
+    .PARAMETER Path
+        要删除的目录路径
+    .PARAMETER MaxRetries
+        最大重试次数，默认 3
+    .RETURNS
+        $true 删除成功 / $false 最终失败
+    #>
+    param([string]$Path, [int]$MaxRetries = 3)
+
+    for ($i = 1; $i -le $MaxRetries; $i++) {
+        try {
+            Remove-Item $Path -Recurse -Force -ErrorAction Stop
+            Start-Sleep -Seconds 1
+            return $true
+        } catch {
+            if ($i -eq $MaxRetries) {
+                Write-Status "[FAIL] 重试 $MaxRetries 次后仍无法删除: $_" -Color Red
+                return $false
+            }
+            Write-Status "[WARN] 第 $i 次删除失败: $_" -Color Yellow
+            Write-Status "尝试终止锁定进程..." -Color Cyan
+            Stop-LockingProcesses -Path $Path
+
+            # Autodesk 特殊处理：taskkill 进程树
+            if ($Path -like '*autodesk*') {
+                Write-Status "强制终止 Autodesk 进程树..." -Color Cyan
+                & taskkill /F /IM adskflex.exe /T 2>$null
+                & taskkill /F /IM AdskAccessServiceHost.exe /T 2>$null
+                & taskkill /F /IM AdskLicensingService.exe /T 2>$null
+                Start-Sleep -Seconds 3
+            } else {
+                Start-Sleep -Seconds 2
+            }
+        }
+    }
+    return $false
+}
+
+# ── 4. 创建符号链接 ──────────────────────────────────────────────────────────
+
+function New-SymlinkWithVerify {
+    <#
+    .SYNOPSIS
+        创建目录符号链接并验证。
+    .PARAMETER Source
+        符号链接路径（C 盘）
+    .PARAMETER Target
+        目标路径
+    .RETURNS
+        $true 成功 / $false 失败
+    #>
+    param([string]$Source, [string]$Target)
+
+    # 确保 Source 的父目录存在
+    $parent = Split-Path $Source -Parent
+    if (-not (Test-Path $parent)) {
+        New-Item -ItemType Directory -Path $parent -Force | Out-Null
+    }
+
+    # 如果 Source 还存在，尝试清理
+    if (Test-Path $Source) {
+        Write-Status "源路径存在，尝试清理..." -Color Yellow
+        Stop-LockingProcesses -Path $Source
+        if (-not (Remove-DirectoryWithForce -Path $Source)) {
+            return $false
+        }
+    }
+
+    try {
+        $item = New-Item -ItemType SymbolicLink -Path $Source -Target $Target -Force -ErrorAction Stop
+
+        Start-Sleep -Milliseconds 300
+        $verify = Get-Item $Source -ErrorAction Stop
+        if ($verify.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+            Write-Status "[OK] 符号链接创建成功 → $($verify.Target)" -Color Green
+            return $true
+        }
+
+        Write-Status "[FAIL] 验证失败：不是重解析点" -Color Red
+        return $false
+    } catch {
+        Write-Status "[FAIL] 创建失败: $_" -Color Red
+        Write-Status "  常见原因: 未以管理员运行 / 目标路径不存在 / 进程锁定" -Color Yellow
+        return $false
+    }
+}
+
+# ── 符号链接配置 ──────────────────────────────────────────────────────────────
+
+$symlinks = @(
+    # ProgramData 目录
+    @{ Source = "C:\ProgramData\Intel Package Cache {1CEAC85D-2590-4760-800F-8DE5E91F3700}"; Target = "D:\ProgramData\Intel Package Cache"; Desc = "Intel Package Cache" }
+    @{ Source = "C:\ProgramData\LogiOptionsPlus";              Target = "D:\ProgramData\LogiOptionsPlus";            Desc = "Logitech Options+ 数据" }
+    @{ Source = "C:\ProgramData\Logishrd";                     Target = "D:\ProgramData\Logishrd";                   Desc = "Logitech 硬件驱动数据" }
+    @{ Source = "C:\ProgramData\Microsoft\VisualStudio";       Target = "D:\ProgramData\Microsoft\VisualStudio";     Desc = "Visual Studio 共享数据" }
+    @{ Source = "C:\ProgramData\Package Cache";                Target = "D:\ProgramData\Package Cache";              Desc = "Windows Installer 包缓存" }
+    @{ Source = "C:\ProgramData\Tongyi";                       Target = "D:\ProgramData\Tongyi";                     Desc = "TRAE/Tongyi Lingma 共享数据" }
+
+    # Program Files 目录
+    @{ Source = "C:\Program Files\Common Files\Adobe\HelpCfg"; Target = "F:\Oftenused\adobe\Photoshop\App\Program Files\Common Files\Adobe\HelpCfg"; Desc = "Adobe 帮助配置" }
+    @{ Source = "C:\Program Files (x86)\Common Files\Autodesk Shared\AdskLicensing\Current"; Target = "C:\Program Files (x86)\Common Files\Autodesk Shared\AdskLicensing\15.3.0.12981"; Desc = "Autodesk 许可服务" }
+    @{ Source = "C:\Program Files (x86)\Common Files\Autodesk Shared"; Target = "D:\Program Files (x86)\Common Files\Autodesk Shared"; Desc = "Autodesk 共享组件" }
+    @{ Source = "C:\Program Files (x86)\Microsoft";             Target = "D:\Program Files (x86)\Microsoft";          Desc = "Microsoft x86 应用数据" }
+
+    # 用户目录 (wh898)
+    @{ Source = "C:\Users\wh898\.android";                     Target = "D:\Users\wh898\.android";                   Desc = "Android SDK/模拟器" }
+    @{ Source = "C:\Users\wh898\.antigravity";                 Target = "D:\Users\wh898\.antigravity";               Desc = "Antigravity AI" }
+    @{ Source = "C:\Users\wh898\.antigravity_tools";           Target = "D:\Users\wh898\.antigravity_tools";         Desc = "Antigravity 工具" }
+    @{ Source = "C:\Users\wh898\.cache";                       Target = "D:\Users\wh898\.cache";                     Desc = "应用缓存" }
+    @{ Source = "C:\Users\wh898\.cherrystudio";                Target = "D:\Users\wh898\.cherrystudio";              Desc = "Cherry Studio" }
+    @{ Source = "C:\Users\wh898\.claude";                      Target = "D:\Users\wh898\.claude";                    Desc = "Claude AI" }
+    @{ Source = "C:\Users\wh898\.cline";                       Target = "D:\Users\wh898\.cline";                     Desc = "Cline AI" }
+    @{ Source = "C:\Users\wh898\.continue";                    Target = "D:\Users\wh898\.continue";                  Desc = "Continue 插件" }
+    @{ Source = "C:\Users\wh898\.fiddler";                     Target = "D:\Users\wh898\.fiddler";                   Desc = "Fiddler 调试代理" }
+    @{ Source = "C:\Users\wh898\.gemini";                      Target = "D:\Users\wh898\.gemini";                    Desc = "Google Gemini" }
+    @{ Source = "C:\Users\wh898\.hvigor";                      Target = "D:\Users\wh898\.hvigor";                    Desc = "Hvigor (HarmonyOS)" }
+    @{ Source = "C:\Users\wh898\.lingma";                      Target = "D:\Users\wh898\.lingma";                    Desc = "通义灵码" }
+    @{ Source = "C:\Users\wh898\.lmstudio";                    Target = "D:\Users\wh898\.lmstudio";                  Desc = "LM Studio" }
+    @{ Source = "C:\Users\wh898\AppData\Local\lm-studio-updater"; Target = "D:\Users\wh898\AppData\Local\lm-studio-updater"; Desc = "LM Studio 更新器" }
+    @{ Source = "C:\Users\wh898\.ohpm";                        Target = "D:\Users\wh898\.ohpm";                      Desc = "OpenHarmony 包管理器" }
+    @{ Source = "C:\Users\wh898\.qwen";                        Target = "D:\Users\wh898\.qwen";                      Desc = "通义千问" }
+    @{ Source = "C:\Users\wh898\.trae-cn";                     Target = "D:\Users\wh898\.trae-cn";                   Desc = "TRAE Solo CN" }
+    @{ Source = "C:\Users\wh898\.ssh";                         Target = "D:\Users\wh898\.ssh";                       Desc = "SSH 密钥" }
+    @{ Source = "C:\Users\wh898\AppData\Local\Google";         Target = "D:\Users\wh898\AppData\Local\Google";       Desc = "Google/Chrome 数据" }
+    @{ Source = "C:\Users\wh898\AppData\Local\Siemens";        Target = "D:\Users\wh898\AppData\Local\Siemens";      Desc = "Siemens 软件数据 (NX/Solid Edge)" }
+    @{ Source = "C:\Users\wh898\PCManger\mdfs";                Target = "Volume{d6cc17c5-1733-4085-bce7-964f1e9f5de9}\"; Desc = "腾讯电脑管家卷挂载" }
+)
+
+# ── 统计变量 ──────────────────────────────────────────────────────────────────
+
+$script:stoppedServices = @{}
+$stats = @{
+    success   = 0
+    skip      = 0
+    fail      = 0
+    migrate   = 0
+}
+
+# ── 入口 ──────────────────────────────────────────────────────────────────────
+
+Clear-Host
+Write-Host "=== 恢复 C 盘符号链接 ===" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "共 $($symlinks.Count) 项待处理" -ForegroundColor Yellow
+$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent())
+    .IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+Write-Host "管理员权限: $isAdmin" -ForegroundColor Cyan
+Write-Host "模式: 自动迁移 C → D 并创建符号链接" -ForegroundColor Green
+Write-Host ""
+
+# ── 主循环 ────────────────────────────────────────────────────────────────────
+
+foreach ($link in $symlinks) {
+    $idx = [array]::IndexOf($symlinks, $link) + 1
+    Write-ProgressItem -Index $idx -Total $symlinks.Count -Desc $link.Desc
+    Write-Status "来源: $($link.Source)" -Color Green
+    Write-Status "目标: $($link.Target)" -Color Green
+
+    # ─ 场景 A：已经是符号链接 ─
+    if ((Test-Path $link.Source) -and ((Get-Item $link.Source -ErrorAction Stop).Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+        Write-Status "状态: [跳过] 符号链接已存在" -Color Green
+        $stats.skip++
         continue
     }
 
-    Write-Host "Source: $($link.Source)" -ForegroundColor Green
-    Write-Host "Target: $($link.Target)" -ForegroundColor Green
-
-    # Check if source already exists as symlink
+    # ─ 场景 B：源路径是真实目录 → 需要迁移 ─
     if (Test-Path $link.Source) {
-        try {
-            $item = Get-Item $link.Source -ErrorAction Stop
-            if ($item.Attributes -match "ReparsePoint") {
-                Write-Host "Status: [OK] Symlink already exists, skipping" -ForegroundColor Green
-                $skipCount++
-                continue
-            } else {
-                Write-Host "Warning: Source exists but is not a symlink!" -ForegroundColor Yellow
-                Write-Host "  Auto-migrating data from C: to D:..." -ForegroundColor Cyan
-                
-                # Check if target already has data
-                $targetHasData = $false
-                if (Test-Path $link.Target) {
-                    $targetItems = Get-ChildItem $link.Target -ErrorAction SilentlyContinue
-                    if ($targetItems) {
-                        $targetHasData = $true
-                    }
-                }
-                
-                # If target doesn't have data, copy from source
-                if (-not $targetHasData) {
-                    Write-Host "  Copying data from C: to D:..." -ForegroundColor Cyan
-                    
-                    # Create target directory if needed
-                    if (-not (Test-Path $link.Target)) {
-                        New-Item -ItemType Directory -Path $link.Target -Force | Out-Null
-                    }
-                    
-                    # Use robocopy to migrate data (properly quote paths with spaces)
-                    $sourcePath = "`"$($link.Source.TrimEnd('\'))`""
-                    $targetPath = "`"$($link.Target.TrimEnd('\'))`""
-                    
-                    $robocopyArgs = @(
-                        $sourcePath,
-                        $targetPath,
-                        '/E',           # Copy subdirectories including empty ones
-                        '/COPY:DAT',    # Copy Data, Attributes, Timestamps
-                        '/R:2',         # Retry 2 times on failure
-                        '/W:3',         # Wait 3 seconds between retries
-                        '/NP',          # No progress
-                        '/NFL',         # No file list
-                        '/NDL'          # No directory list
-                    )
-                    
-                    $result = Start-Process -FilePath "robocopy.exe" -ArgumentList $robocopyArgs -Wait -NoNewWindow -PassThru
-                    
-                    if ($result.ExitCode -lt 8) {
-                        Write-Host "  [OK] Data migrated successfully" -ForegroundColor Green
-                        $migrateCount++
-                    } else {
-                        Write-Host "  [WARN] Robocopy exit code: $($result.ExitCode)" -ForegroundColor Yellow
-                    }
-                } else {
-                    Write-Host "  Target already has data, skipping copy" -ForegroundColor Cyan
-                }
-                
-                # Now delete the source directory
-                Write-Host "  Removing source directory from C:..." -ForegroundColor Cyan
-                
-                $deleteSuccess = $false
-                $maxRetries = 3
-                
-                for ($retry = 1; $retry -le $maxRetries; $retry++) {
-                    try {
-                        Remove-Item $link.Source -Recurse -Force -ErrorAction Stop
-                        Write-Host "  Deleted source directory" -ForegroundColor Green
-                        $deleteSuccess = $true
-                        Start-Sleep -Seconds 1
-                        
-                        # Restore services that were disabled
-                        if ($global:disabledServices.Count -gt 0) {
-                            Write-Host "  Restoring $($global:disabledServices.Count) service(s)..." -ForegroundColor Cyan
-                            foreach ($serviceName in $global:disabledServices.Keys) {
-                                $originalType = $global:disabledServices[$serviceName]
-                                try {
-                                    Set-Service -Name $serviceName -StartupType $originalType -ErrorAction SilentlyContinue
-                                    $serviceInfo = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
-                                    if ($serviceInfo) {
-                                        Write-Host "    Restored: $($serviceInfo.DisplayName) to $originalType" -ForegroundColor Gray
-                                    } else {
-                                        Write-Host "    Restored: $serviceName to $originalType" -ForegroundColor Gray
-                                    }
-                                } catch {
-                                    Write-Host "    [WARN] Could not restore $serviceName`: $_" -ForegroundColor Yellow
-                                }
-                            }
-                            # Clear the tracking dictionary
-                            $global:disabledServices.Clear()
-                        }
-                        
-                        break
-                    } catch {
-                        if ($retry -lt $maxRetries) {
-                            Write-Host "  [WARN] Delete attempt $retry failed: $_" -ForegroundColor Yellow
-                            Write-Host "  Attempting to stop processes and retry..." -ForegroundColor Cyan
-                            
-                            # More aggressive process detection
-                            Stop-ProcessesUsingPath -Path $link.Source
-                            
-                            # Also try to find any process with the path in command line
-                            $pathKeyword = Split-Path $link.Source -Leaf
-                            $procs = Get-WmiObject Win32_Process | Where-Object {
-                                $_.CommandLine -like "*$pathKeyword*"
-                            }
-                            
-                            if ($procs) {
-                                foreach ($proc in $procs) {
-                                    try {
-                                        Write-Host "    Terminating: $($proc.Name) (PID: $($proc.ProcessId))" -ForegroundColor Gray
-                                        Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
-                                        Start-Sleep -Milliseconds 500
-                                    } catch {
-                                        # Ignore errors
-                                    }
-                                }
-                            }
-                            
-                            # For Autodesk, use taskkill with /T flag to kill entire process tree
-                            if ($link.Source -like '*autodesk*') {
-                                Write-Host "  Using taskkill to force terminate Autodesk processes..." -ForegroundColor Cyan
-                                
-                                # First, find and kill the parent process that keeps restarting adskflex
-                                try {
-                                    $adskflexProc = Get-WmiObject Win32_Process | Where-Object { $_.Name -eq 'adskflex.exe' } | Select-Object -First 1
-                                    if ($adskflexProc) {
-                                        $parentPid = $adskflexProc.ParentProcessId
-                                        Write-Host "    Found parent process PID: $parentPid" -ForegroundColor Gray
-                                        
-                                        # Get parent process info
-                                        $parentProc = Get-WmiObject Win32_Process | Where-Object { $_.ProcessId -eq $parentPid }
-                                        if ($parentProc) {
-                                            Write-Host "    Parent process: $($parentProc.Name) (PID: $parentPid)" -ForegroundColor Gray
-                                            
-                                            # Kill the parent process tree
-                                            & taskkill /F /PID $parentPid /T 2>$null
-                                            Write-Host "    [OK] Killed parent process tree" -ForegroundColor Green
-                                        }
-                                    }
-                                } catch {
-                                    Write-Host "    [WARN] Could not find parent process: $_" -ForegroundColor Yellow
-                                }
-                                
-                                # Also kill any remaining adskflex processes
-                                try {
-                                    & taskkill /F /IM adskflex.exe /T 2>$null
-                                    & taskkill /F /IM AdskAccessServiceHost.exe /T 2>$null
-                                    & taskkill /F /IM AdskLicensingService.exe /T 2>$null
-                                    Write-Host "    [OK] Killed all Autodesk processes" -ForegroundColor Green
-                                } catch {
-                                    Write-Host "    [WARN] taskkill failed: $_" -ForegroundColor Yellow
-                                }
-                                
-                                # Wait longer for processes to fully terminate
-                                Write-Host "  Waiting 5 seconds for processes to terminate..." -ForegroundColor Cyan
-                                Start-Sleep -Seconds 5
-                            } else {
-                                Write-Host "  Retry $retry/$maxRetries..." -ForegroundColor Cyan
-                                Start-Sleep -Seconds 2
-                            }
-                        } else {
-                            Write-Host "  [FAIL] Could not delete after $maxRetries attempts: $_" -ForegroundColor Red
-                            Write-Host "  Please manually close applications using: $pathKeyword" -ForegroundColor Yellow
-                            Write-Host "  Skipping this item" -ForegroundColor Yellow
-                            $failCount++
-                            continue
-                        }
-                    }
-                }
-                
-                if (-not $deleteSuccess) {
-                    continue
-                }
+        Write-Status "源路径是真实目录，准备迁移..." -Color Yellow
+
+        $targetExists = Test-Path $link.Target
+        $targetNotEmpty = $targetExists -and @(Get-ChildItem $link.Target -ErrorAction SilentlyContinue).Count -gt 0
+
+        if (-not $targetNotEmpty) {
+            if (Invoke-Robocopy -Source $link.Source -Dest $link.Target) {
+                $stats.migrate++
             }
-        } catch {
-            Write-Host "Warning: Could not check source path: $_" -ForegroundColor Yellow
-        }
-    }
-
-    # Check if target exists, create if not
-    if (-not (Test-Path $link.Target)) {
-        Write-Host "Warning: Target does not exist: $($link.Target)" -ForegroundColor Yellow
-        
-        # For volume mounts, skip creation
-        if ($link.Target -like "Volume{*") {
-            Write-Host "  Skipping volume mount creation (system managed)" -ForegroundColor Cyan
-            $failCount++
-            continue
-        }
-        
-        # Auto-create empty directory (no prompt)
-        Write-Host "  Creating directory for future use..." -ForegroundColor Cyan
-        try {
-            New-Item -ItemType Directory -Path $link.Target -Force -ErrorAction Stop | Out-Null
-            Write-Host "  [OK] Directory created: $($link.Target)" -ForegroundColor Green
-        } catch {
-            Write-Host "  [FAIL] Could not create directory: $_" -ForegroundColor Red
-            $failCount++
-            continue
-        }
-    }
-
-    # Create symlink
-    try {
-        Write-Host "Creating symlink..." -ForegroundColor Green
-        
-        # Before creating symlink, check if anything is blocking
-        if (Test-Path $link.Source) {
-            Write-Host "  Warning: Source path still exists, attempting to clear..." -ForegroundColor Yellow
-            Stop-ProcessesUsingPath -Path $link.Source
-            
-            try {
-                Remove-Item $link.Source -Recurse -Force -ErrorAction Stop
-                Write-Host "  Cleared existing path" -ForegroundColor Green
-                Start-Sleep -Seconds 1
-            } catch {
-                Write-Host "  [WARN] Could not remove existing path: $_" -ForegroundColor Yellow
-                Write-Host "  Will attempt to create symlink anyway..." -ForegroundColor Yellow
-            }
-        }
-        
-        # Create the symlink with force flag
-        $symlinkResult = New-Item -ItemType SymbolicLink -Path $link.Source -Target $link.Target -Force -ErrorAction Stop
-
-        # Verify the symlink was created correctly
-        Start-Sleep -Milliseconds 500
-        $verifyItem = Get-Item $link.Source -ErrorAction Stop
-        if ($verifyItem.Attributes -match "ReparsePoint") {
-            $actualTarget = $verifyItem.Target
-            Write-Host "[OK] Symlink created successfully!" -ForegroundColor Green
-            Write-Host "  Points to: $actualTarget" -ForegroundColor Gray
-            $successCount++
         } else {
-            Write-Host "[FAIL] Symlink verification failed - not a reparse point" -ForegroundColor Red
-            $failCount++
+            Write-Status "目标路径已有数据，跳过复制" -Color Cyan
         }
-    } catch {
-        Write-Host "[FAIL] Creation failed: $_" -ForegroundColor Red
-        Write-Host "  Common solutions:" -ForegroundColor Yellow
-        Write-Host "    1. Run as Administrator" -ForegroundColor Gray
-        Write-Host "    2. Close applications using this path" -ForegroundColor Gray
-        Write-Host "    3. Check if target path exists" -ForegroundColor Gray
-        $failCount++
+
+        # 删除源目录（自动处理锁定）
+        if (-not (Remove-DirectoryWithForce -Path $link.Source)) {
+            $stats.fail++
+            continue
+        }
+
+        # 创建符号链接
+        if (New-SymlinkWithVerify -Source $link.Source -Target $link.Target) {
+            $stats.success++
+        } else {
+            $stats.fail++
+        }
+        continue
     }
 
-    Write-Host ""
+    # ─ 场景 C：源路径不存在 → 直接创建符号链接 ─
+    if (-not (Test-Path $link.Source)) {
+        # 卷挂载由系统管理，跳过
+        if ($link.Target -like "Volume{*") {
+            Write-Status "跳过卷挂载（由系统管理）" -Color Yellow
+            $stats.fail++
+            continue
+        }
+
+        # 确保目标存在
+        if (-not (Test-Path $link.Target)) {
+            Write-Status "目标路径不存在，创建目录..." -Color Yellow
+            try {
+                New-Item -ItemType Directory -Path $link.Target -Force -ErrorAction Stop | Out-Null
+                Write-Status "[OK] 目录已创建" -Color Green
+            } catch {
+                Write-Status "[FAIL] 创建目录失败: $_" -Color Red
+                $stats.fail++
+                continue
+            }
+        }
+
+        if (New-SymlinkWithVerify -Source $link.Source -Target $link.Target) {
+            $stats.success++
+        } else {
+            $stats.fail++
+        }
+    }
 }
 
-# Output summary
+# ── 恢复被禁用的服务 ──────────────────────────────────────────────────────────
+
+Restore-Services
+
+# ── 汇总 ──────────────────────────────────────────────────────────────────────
+
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "=== Restore Complete ===" -ForegroundColor Cyan
+Write-Host "=== 恢复完成 ===" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "Summary:" -ForegroundColor White
-Write-Host "  Successfully created : $successCount" -ForegroundColor Green
-Write-Host "  Already exists      : $skipCount" -ForegroundColor Yellow
-Write-Host "  Failed              : $failCount" -ForegroundColor Red
-Write-Host "  Manual handling     : $manualCount" -ForegroundColor Yellow
-Write-Host "  Data migrated       : $migrateCount" -ForegroundColor Cyan
+
+Write-Host "  成功创建: $($stats.success)"   -ForegroundColor Green
+Write-Host "  已存在:   $($stats.skip)"      -ForegroundColor Yellow
+Write-Host "  迁移数据: $($stats.migrate)"   -ForegroundColor Cyan
+Write-Host "  失败:     $($stats.fail)"      -ForegroundColor Red
 Write-Host ""
 
-if ($successCount -gt 0) {
-    Write-Host "✓ Successfully restored $successCount symlinks" -ForegroundColor Green
-}
-
-if ($manualCount -gt 0) {
-    Write-Host "Note: $manualCount symlink(s) require manual target path verification" -ForegroundColor Yellow
-    Write-Host "Recommendations:" -ForegroundColor Yellow
-    Write-Host "  1. Check backup for original target paths" -ForegroundColor Gray
-    Write-Host "  2. Or use command to view existing symlinks:" -ForegroundColor Yellow
-    Write-Host '     Get-ChildItem <path> -Attributes ReparsePoint | Select-Object FullName, Target' -ForegroundColor Gray
-    Write-Host ""
-}
-
-if ($failCount -gt 0) {
-    Write-Host "Warning: $failCount symlink(s) failed to create" -ForegroundColor Red
-    Write-Host "Troubleshooting:" -ForegroundColor Yellow
-    Write-Host "  1. Run script as Administrator" -ForegroundColor Gray
-    Write-Host "  2. Close applications that may be using these paths" -ForegroundColor Gray
-    Write-Host "  3. Manually check error messages above" -ForegroundColor Gray
-    Write-Host ""
-}
-
-if ($failCount -eq 0 -and $manualCount -eq 0) {
-    Write-Host "All symlinks restored successfully!" -ForegroundColor Green
-}
+if ($stats.success -gt 0)   { Write-Host "✓ 成功创建 $($stats.success) 个符号链接" -ForegroundColor Green }
+if ($stats.fail -gt 0)      { Write-Host "⚠ 有 $($stats.fail) 个失败，请检查上方错误信息" -ForegroundColor Red; Write-Host "  1. 以管理员身份运行"; Write-Host "  2. 关闭使用中路径的应用"; Write-Host "  3. 检查目标路径是否存在" }
+if ($stats.fail -eq 0)      { Write-Host "所有符号链接已成功恢复！" -ForegroundColor Green }
 
 Write-Host ""
-Write-Host "Press any key to exit..." -ForegroundColor Gray
+Write-Host "按任意键退出..." -ForegroundColor Gray
 $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")

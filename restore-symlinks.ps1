@@ -10,7 +10,7 @@
 
 #Requires -RunAsAdministrator
 
-[CmdletBinding(SupportsShouldProcess)]
+[CmdletBinding()]
 param(
     [switch]$WhatIf,
     [string]$ConfigFile = "$PSScriptRoot\symlinks.txt"
@@ -405,6 +405,7 @@ function Process-SymlinkItem {
             $item = Get-Item $Link.Source -ErrorAction Stop
             if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
                 Write-Status "状态: [跳过] 符号链接已存在" -Color Green
+                $script:stats.skip++
                 return @{ Result = 'skip' }
             }
         } catch {
@@ -499,8 +500,8 @@ if ($WhatIf) {
 }
 Write-Host ""
 Write-Host "共 $($symlinks.Count) 项待处理" -ForegroundColor Yellow
-$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent())
-    .IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+$currentPrincipal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
+$isAdmin = $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 Write-Host "管理员权限: $isAdmin" -ForegroundColor Cyan
 Write-Host "模式: 自动迁移 C → D 并创建符号链接" -ForegroundColor Green
 Write-Host ""

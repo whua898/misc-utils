@@ -2,8 +2,9 @@
 .SYNOPSIS
     恢复 C 盘符号链接（重装系统后重建符号链接用）
 .DESCRIPTION
-    自动将 C 盘数据迁移到 D:/F: 等目标盘，创建目录符号链接。
+    从 symlinks.txt 读取源路径，自动将 C: 替换为 D: 作为目标，创建目录符号链接。
     功能：跳过已存在的符号链接、自动检测锁定进程、智能恢复。
+    自动扫描用户目录下 . 开头的未链接目录并追加到 symlinks.txt。
 .NOTES
     需要管理员权限运行。
 #>
@@ -106,6 +107,7 @@ function Invoke-Robocopy {
     <#
     .SYNOPSIS
         使用 robocopy 拷贝目录，返回 $true/$false
+        注意：路径含空格时必须用双引号包裹。
     #>
     param(
         [string]$Source,
@@ -130,9 +132,9 @@ function Invoke-Robocopy {
     }
 
     try {
-        # 直接调用 robocopy 以便捕获输出
-        $output = & robocopy $Source.TrimEnd('\') $Dest.TrimEnd('\') `
-            /E /COPY:DAT "/R:$Retry" "/W:$WaitSec" /NP /NFL /NDL 2>&1
+        # 修复：路径用双引号包裹防止空格问题；/COPY:DATS 保留 ACL 权限
+        $output = & robocopy "$($Source.TrimEnd('\'))" "$($Dest.TrimEnd('\'))" `
+            /E /COPY:DATS "/R:$Retry" "/W:$WaitSec" /NP /NFL /NDL 2>&1
 
         if ($LASTEXITCODE -lt 8) {
             Write-Status "[OK] 数据迁移完成" -Color Green
@@ -165,11 +167,11 @@ function Stop-LockingProcesses {
 
         # ── 根据路径关键词匹配进程名 ──
         $keywordMap = @(
-            @('*siemens*', 'ug*', 'nx*', 'solid*', 'teamcenter*'),
+            @('*siemens*', 'ug*', 'nx*', 'ugnx*', 'teamcenter*'),
             @('*logitech*', 'logi*', 'lghub*'),
             @('*adobe*', 'adobe*', 'photoshop*', 'illustrator*'),
-            @('*autodesk*', 'autodesk*', 'acad*', 'revit*', 'adsk*', 'adskservice*'),
-            @('*android*', 'adb*', 'android*', 'emulator*'),
+            @('*autodesk*', 'autodesk*', 'acad*', 'revit*', 'adsk*'),
+            @('*android*', 'adb*', 'androidemulator*'),
             @('*fiddler*', 'fiddler*'),
             @('*lmstudio*', 'lmstudio*'),
             @('*cherry*', 'cherry*'),
@@ -182,10 +184,7 @@ function Stop-LockingProcesses {
             # 编辑器/IDE：限制更精确避免误杀
             @('*visualstudio*', 'devenv*'),
             @('*pycharm*', 'pycharm*'),
-            @('*idea*', 'idea*'),
-            # 目录名本身包含 studio/code 的再检查
-            @('*studio*', 'studio*'),
-            @('*code*', 'code*')
+            @('*idea*', 'idea*')
         )
 
         foreach ($map in $keywordMap) {
@@ -203,9 +202,11 @@ function Stop-LockingProcesses {
         $patterns = $patterns | Select-Object -Unique
 
         foreach ($pattern in $patterns) {
-            $procs = Get-Process -Name $pattern -ErrorAction SilentlyContinue
+            # 修复：Get-Process -Name 通配符兼容性差，改用管道过滤
+            $procs = Get-Process -ErrorAction SilentlyContinue |
+                Where-Object { $_.ProcessName -like $pattern }
+
             foreach ($p in $procs) {
-                # 跳过 explorer
                 if ($p.ProcessName -eq 'explorer') { continue }
 
                 try {
@@ -230,13 +231,14 @@ function Stop-LockingProcesses {
 
         # ── 停止相关 Windows 服务 ──
         $svcPatterns = @()
-        if ($pathLower -like '*autodesk*') {
+        if ($pathLower -like '*\autodesk*') {
             $svcPatterns += 'AdskLicensing*', 'Autodesk*', 'FLEXnet*'
         }
-        if ($pathLower -like '*siemens*' -or $pathLower -like '*solidedge*' -or $pathLower -like '*nx*') {
-            $svcPatterns += 'Siemens*', 'SolidEdge*', 'NX*'
+        # 修复：加 \ 前缀防止误匹配 unix/lynx
+        if ($pathLower -like '*\siemens*' -or $pathLower -like '*\nx*' -or $pathLower -like '*solidedge*') {
+            $svcPatterns += 'Siemens*', 'SolidEdge*', 'ugnx*'
         }
-        if ($pathLower -like '*logitech*') {
+        if ($pathLower -like '*\logitech*') {
             $svcPatterns += 'Logi*', 'LGHUB*'
         }
 
@@ -252,15 +254,13 @@ function Stop-LockingProcesses {
                         Set-Service -Name $svc.Name -StartupType Disabled -ErrorAction SilentlyContinue
                     }
                     Write-Status "[OK] 服务已停止" -Color Green
-                    # 记录以便恢复
                     $script:stoppedServices[$svc.Name] = $svc.StartType
                 } catch {
-                    Write-Status "[WARN] 未能停止服务: $_" -Color Yellow
+                    Write-Status "[WARN] 未能停止服务: $($_.Exception.Message)" -Color Yellow
                 }
             }
         }
 
-        # 等 2 秒让句柄释放
         if ($stopped.Count -gt 0) {
             Start-Sleep -Seconds 2
         }
@@ -273,10 +273,6 @@ function Stop-LockingProcesses {
 }
 
 function Restore-Services {
-    <#
-    .SYNOPSIS
-        恢复之前临时禁用的服务。
-    #>
     if ($script:stoppedServices.Count -eq 0) { return }
 
     Write-Status "恢复 $($script:stoppedServices.Count) 个服务..." -Color Cyan
@@ -285,7 +281,7 @@ function Restore-Services {
             Set-Service -Name $kv.Key -StartupType $kv.Value -ErrorAction SilentlyContinue
             Write-Status "  $($kv.Key) → $($kv.Value)" -Color Gray
         } catch {
-            Write-Status "  [WARN] 恢复 $($kv.Key) 失败: $_" -Color Yellow
+            Write-Status "  [WARN] 恢复 $($kv.Key) 失败: $($_.Exception.Message)" -Color Yellow
         }
     }
     $script:stoppedServices.Clear()
@@ -314,15 +310,15 @@ function Remove-DirectoryWithForce {
             return $true
         } catch {
             if ($i -eq $MaxRetries) {
-                Write-Status "[FAIL] 重试 $MaxRetries 次后仍无法删除: $_" -Color Red
+                Write-Status "[FAIL] 重试 $MaxRetries 次后仍无法删除: $($_.Exception.Message)" -Color Red
                 return $false
             }
-            Write-Status "[WARN] 第 $i 次删除失败: $_" -Color Yellow
+            # 修复：输出完整异常信息
+            Write-Status "[WARN] 第 $i 次删除失败: $($_.Exception.Message)" -Color Yellow
             Write-Status "尝试终止锁定进程..." -Color Cyan
             Stop-LockingProcesses -Path $Path
 
-            # Autodesk 特殊处理：taskkill 进程树
-            if ($Path -like '*autodesk*') {
+            if ($Path -like '*\autodesk*') {
                 Write-Status "强制终止 Autodesk 进程树..." -Color Cyan
                 & taskkill /F /IM adskflex.exe /T 2>$null
                 & taskkill /F /IM AdskAccessServiceHost.exe /T 2>$null
@@ -347,13 +343,11 @@ function New-SymlinkWithVerify {
     #>
     param([string]$Source, [string]$Target)
 
-    # 确保 Source 的父目录存在
     $parent = Split-Path $Source -Parent
     if (-not (Test-Path $parent)) {
         New-Item -ItemType Directory -Path $parent -Force | Out-Null
     }
 
-    # 如果 Source 还存在，尝试清理
     if (Test-Path $Source) {
         Write-Status "源路径存在，尝试清理..." -Color Yellow
         Stop-LockingProcesses -Path $Source
@@ -386,9 +380,16 @@ function New-SymlinkWithVerify {
     }
 }
 
-# ── 处理符号链接 ──────────────────────────────────────────────────────────────
+# ── 处理符号链接（返回结果用于主循环统计） ──────────────────────────────────
 
 function Process-SymlinkItem {
+    <#
+    .SYNOPSIS
+        处理单个符号链接项。
+    .RETURNS
+        @{ Result = 'skip'|'success'|'fail' }
+        注意：统计在主循环中统一累加，避免 $script: 作用域问题。
+    #>
     param(
         [hashtable]$Link,
         [int]$Index,
@@ -405,11 +406,9 @@ function Process-SymlinkItem {
             $item = Get-Item $Link.Source -ErrorAction Stop
             if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
                 Write-Status "状态: [跳过] 符号链接已存在" -Color Green
-                $script:stats.skip++
                 return @{ Result = 'skip' }
             }
         } catch {
-            # 路径存在但因权限无法读取属性，按真实目录处理
             Write-Status "无法读取路径属性，按真实目录处理" -Color Yellow
         }
     }
@@ -421,9 +420,13 @@ function Process-SymlinkItem {
         $targetExists = Test-Path $Link.Target
         $targetNotEmpty = $targetExists -and @(Get-ChildItem $Link.Target -ErrorAction SilentlyContinue).Count -gt 0
 
+        # 修复：robocopy 失败时不删除源目录，防止数据丢失
+        $robocopyOk = $true
         if (-not $targetNotEmpty) {
-            if (Invoke-Robocopy -Source $Link.Source -Dest $Link.Target) {
-                $script:stats.migrate++
+            $robocopyOk = Invoke-Robocopy -Source $Link.Source -Dest $Link.Target
+            if (-not $robocopyOk) {
+                Write-Status "[FAIL] 数据迁移失败，拒绝删除源目录以防数据丢失" -Color Red
+                return @{ Result = 'fail' }
             }
         } else {
             Write-Status "目标路径已有数据，跳过复制" -Color Cyan
@@ -431,29 +434,23 @@ function Process-SymlinkItem {
 
         # 删除源目录（自动处理锁定）
         if (-not (Remove-DirectoryWithForce -Path $Link.Source)) {
-            $script:stats.fail++
             return @{ Result = 'fail' }
         }
 
         # 创建符号链接
         if (New-SymlinkWithVerify -Source $Link.Source -Target $Link.Target) {
-            $script:stats.success++
             return @{ Result = 'success' }
         } else {
-            $script:stats.fail++
             return @{ Result = 'fail' }
         }
     }
 
     # ─ 场景 C：源路径不存在 → 直接创建符号链接 ─
-    # 卷挂载由系统管理，跳过
     if ($Link.Target -like "Volume{*") {
         Write-Status "跳过卷挂载（由系统管理）" -Color Yellow
-        $script:stats.skip++
         return @{ Result = 'skip' }
     }
 
-    # 确保目标存在
     if (-not (Test-Path $Link.Target)) {
         Write-Status "目标路径不存在，创建目录..." -Color Yellow
         try {
@@ -463,16 +460,13 @@ function Process-SymlinkItem {
             Write-Status "[OK] 目录已创建" -Color Green
         } catch {
             Write-Status "[FAIL] 创建目录失败: $_" -Color Red
-            $script:stats.fail++
             return @{ Result = 'fail' }
         }
     }
 
     if (New-SymlinkWithVerify -Source $Link.Source -Target $Link.Target) {
-        $script:stats.success++
         return @{ Result = 'success' }
     } else {
-        $script:stats.fail++
         return @{ Result = 'fail' }
     }
 }
@@ -491,14 +485,12 @@ function Add-MissingDotDirs {
     $existingLines = Get-Content $ConfigPath -Encoding UTF8 -ErrorAction SilentlyContinue
     if (-not $existingLines) { return }
 
-    # 扫描用户目录下 . 开头的真实目录（排除符号链接）
     $dotDirs = Get-ChildItem $UserDir -Directory -Force -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -like '.*' -and
                        -not ($_.Attributes -band [System.IO.FileAttributes]::ReparsePoint) }
 
     if (-not $dotDirs -or $dotDirs.Count -eq 0) { return }
 
-    # 找出不在配置中的目录
     $newDirs = @()
     foreach ($dir in $dotDirs) {
         $src = $dir.FullName
@@ -517,11 +509,8 @@ function Add-MissingDotDirs {
     if ($newDirs.Count -eq 0) { return }
 
     Write-Status "发现 $($newDirs.Count) 个新 . 目录，正在追加到 symlinks.txt..." -Color Cyan
-
-    # 按字母排序
     $newDirs = $newDirs | Sort-Object
 
-    # 找到 # === 卷挂载 === 行，在此之前插入
     $insertIndex = -1
     for ($i = 0; $i -lt $existingLines.Count; $i++) {
         if ($existingLines[$i] -match '^#\s*===\s*卷挂载') {
@@ -537,21 +526,22 @@ function Add-MissingDotDirs {
         $newContent += $existingLines[$i]
     }
     foreach ($d in $newDirs) {
-        $newContent += "C:\Users\wh898\$d"
+        # 修复：用 $env:USERPROFILE 替换硬编码用户名
+        $newContent += "$env:USERPROFILE\$d"
         Write-Status "  + $d" -Color Green
     }
-    # 确保前面有空行分隔
     if ($newContent[$newContent.Count - 1] -ne '') { $newContent += '' }
     for ($i = $insertIndex; $i -lt $existingLines.Count; $i++) {
         $newContent += $existingLines[$i]
     }
 
-    $newContent -join "`r`n" | Out-File -FilePath $ConfigPath -Encoding UTF8
+    # 修复：用 utf8NoBOM 兼容 PS5.1 和 PS7
+    $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::WriteAllLines($ConfigPath, $newContent, $utf8NoBom)
 }
 
 # ── 符号链接配置（从 symlinks.txt 加载） ───────────────────────────────────────
 
-# 自动追加未链接目录
 if (-not $WhatIf) {
     Add-MissingDotDirs -ConfigPath $ConfigFile
 }
@@ -567,6 +557,8 @@ $script:stats = @{
     fail      = 0
     migrate   = 0
 }
+# 修复：migrate 改在主循环内由 Process-SymlinkItem 返回后统一累加
+$script:migrateCount = 0
 
 # ── 入口 ──────────────────────────────────────────────────────────────────────
 
@@ -583,15 +575,19 @@ Write-Host "管理员权限: $isAdmin" -ForegroundColor Cyan
 Write-Host "模式: 自动迁移 C → D 并创建符号链接" -ForegroundColor Green
 Write-Host ""
 
-# ── 主循环（用 try/finally 保证服务恢复） ─────────────────────────────────────
+# ── 主循环（修复：统计由函数返回后在主循环统一累加） ──────────────────────────
 
 try {
     foreach ($link in $symlinks) {
         $idx = [array]::IndexOf($symlinks, $link) + 1
-        $null = Process-SymlinkItem -Link $link -Index $idx -Total $symlinks.Count
+        $result = Process-SymlinkItem -Link $link -Index $idx -Total $symlinks.Count
+        switch ($result.Result) {
+            'success' { $script:stats.success++ }
+            'skip'    { $script:stats.skip++ }
+            'fail'    { $script:stats.fail++ }
+        }
     }
 } finally {
-    # 无论成功失败，确保恢复被禁用的服务
     Restore-Services
 }
 
@@ -605,7 +601,7 @@ Write-Host ""
 
 Write-Host "  成功创建: $($script:stats.success)"   -ForegroundColor Green
 Write-Host "  已存在:   $($script:stats.skip)"      -ForegroundColor Yellow
-Write-Host "  迁移数据: $($script:stats.migrate)"   -ForegroundColor Cyan
+Write-Host "  迁移数据: $($script:migrateCount)"     -ForegroundColor Cyan
 Write-Host "  失败:     $($script:stats.fail)"      -ForegroundColor Red
 Write-Host ""
 

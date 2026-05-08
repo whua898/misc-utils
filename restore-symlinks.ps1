@@ -12,7 +12,8 @@
 
 [CmdletBinding(SupportsShouldProcess)]
 param(
-    [switch]$WhatIf
+    [switch]$WhatIf,
+    [string]$ConfigFile = "$PSScriptRoot\symlinks.txt"
 )
 
 $ErrorActionPreference = "Continue"
@@ -27,6 +28,76 @@ function Write-ProgressItem {
 
 function Write-Status($Text, $Color = "Gray") {
     Write-Host "  $Text" -ForegroundColor $Color
+}
+
+# ── 0. 加载配置文件 ──────────────────────────────────────────────────────────
+
+function Load-SymlinkConfig {
+    <#
+    .SYNOPSIS
+        从 symlinks.txt 解析符号链接配置。
+        格式：
+          C:\source                        → 目标自动 = D:\source
+          C:\source -> X:\target           → 显式目标
+          # 注释                           → 跳过
+    .RETURNS
+        @{ Source=...; Target=...; Desc=... } 数组
+    #>
+    param([string]$Path)
+
+    if (-not (Test-Path $Path)) {
+        Write-Status "[FAIL] 配置文件不存在: $Path" -Color Red
+        Write-Status "  请创建 symlinks.txt，每行一个 C: 源路径" -Color Yellow
+        exit 1
+    }
+
+    $result = @()
+    $lines = Get-Content $Path -Encoding UTF8 | Where-Object { $_ -match '\S' }
+
+    foreach ($line in $lines) {
+        $trimmed = $line.Trim()
+        if ($trimmed -match '^#' -or $trimmed -eq '') { continue }
+
+        $source = ''
+        $target = ''
+
+        if ($trimmed -match '^(.+?) *-> *(.+)$') {
+            $source = $matches[1].Trim()
+            $target = $matches[2].Trim()
+        } else {
+            $source = $trimmed
+        }
+
+        if (-not $source) { continue }
+
+        # 自动推导目标：C:\ 替换为 D:\
+        if (-not $target) {
+            if ($source -match '^C:\\') {
+                $target = $source -replace '^C:\\', 'D:\'
+            } elseif ($source -match '^C:/') {
+                $target = $source -replace '^C:/', 'D:/'
+            } else {
+                Write-Status "[WARN] 无法自动推导目标: $source" -Color Yellow
+                continue
+            }
+        }
+
+        $desc = Split-Path $source -Leaf
+
+        $result += @{
+            Source = $source
+            Target = $target
+            Desc   = $desc
+        }
+    }
+
+    if ($result.Count -eq 0) {
+        Write-Status "[FAIL] 配置文件中没有有效的条目" -Color Red
+        exit 1
+    }
+
+    Write-Status "已加载 $($result.Count) 个配置项" -Color Cyan
+    return $result
 }
 
 # ── 1. 数据迁移（robocopy 封装） ──────────────────────────────────────────────
@@ -405,55 +476,9 @@ function Process-SymlinkItem {
     }
 }
 
-# ── 符号链接配置 ──────────────────────────────────────────────────────────────
+# ── 符号链接配置（从 symlinks.txt 加载） ───────────────────────────────────────
 
-$symlinks = @(
-    # ProgramData 目录
-    @{ Source = "C:\ProgramData\Intel Package Cache {1CEAC85D-2590-4760-800F-8DE5E91F3700}"; Target = "D:\ProgramData\Intel Package Cache"; Desc = "Intel Package Cache" }
-    @{ Source = "C:\ProgramData\LogiOptionsPlus";              Target = "D:\ProgramData\LogiOptionsPlus";            Desc = "Logitech Options+ 数据" }
-    @{ Source = "C:\ProgramData\Logishrd";                     Target = "D:\ProgramData\Logishrd";                   Desc = "Logitech 硬件驱动数据" }
-    @{ Source = "C:\ProgramData\Microsoft\VisualStudio";       Target = "D:\ProgramData\Microsoft\VisualStudio";     Desc = "Visual Studio 共享数据" }
-    @{ Source = "C:\ProgramData\Package Cache";                Target = "D:\ProgramData\Package Cache";              Desc = "Windows Installer 包缓存" }
-    @{ Source = "C:\ProgramData\Tongyi";                       Target = "D:\ProgramData\Tongyi";                     Desc = "TRAE/Tongyi Lingma 共享数据" }
-
-    # Program Files 目录
-    @{ Source = "C:\Program Files\Common Files\Adobe\HelpCfg"; Target = "F:\Oftenused\adobe\Photoshop\App\Program Files\Common Files\Adobe\HelpCfg"; Desc = "Adobe 帮助配置" }
-    @{ Source = "C:\Program Files (x86)\Common Files\Autodesk Shared\AdskLicensing\Current"; Target = "C:\Program Files (x86)\Common Files\Autodesk Shared\AdskLicensing\15.3.0.12981"; Desc = "Autodesk 许可服务" }
-    @{ Source = "C:\Program Files (x86)\Common Files\Autodesk Shared"; Target = "D:\Program Files (x86)\Common Files\Autodesk Shared"; Desc = "Autodesk 共享组件" }
-    @{ Source = "C:\Program Files (x86)\Microsoft";             Target = "D:\Program Files (x86)\Microsoft";          Desc = "Microsoft x86 应用数据" }
-
-    # 用户目录 (wh898)
-    @{ Source = "C:\Users\wh898\.ai_completion";               Target = "D:\Users\wh898\.ai_completion";             Desc = "AI 代码补全" }
-    @{ Source = "C:\Users\wh898\.android";                     Target = "D:\Users\wh898\.android";                   Desc = "Android SDK/模拟器" }
-    @{ Source = "C:\Users\wh898\.antigravity";                 Target = "D:\Users\wh898\.antigravity";               Desc = "Antigravity AI" }
-    @{ Source = "C:\Users\wh898\.antigravity_tools";           Target = "D:\Users\wh898\.antigravity_tools";         Desc = "Antigravity 工具" }
-    @{ Source = "C:\Users\wh898\.cache";                       Target = "D:\Users\wh898\.cache";                     Desc = "应用缓存" }
-    @{ Source = "C:\Users\wh898\.claude-code-router";          Target = "D:\Users\wh898\.claude-code-router";        Desc = "Claude Code Router" }
-    @{ Source = "C:\Users\wh898\.codex";                       Target = "D:\Users\wh898\.codex";                     Desc = "Codex AI" }
-    @{ Source = "C:\Users\wh898\.config";                      Target = "D:\Users\wh898\.config";                    Desc = "应用配置" }
-    @{ Source = "C:\Users\wh898\.cherrystudio";                Target = "D:\Users\wh898\.cherrystudio";              Desc = "Cherry Studio" }
-    @{ Source = "C:\Users\wh898\.claude";                      Target = "D:\Users\wh898\.claude";                    Desc = "Claude AI" }
-    @{ Source = "C:\Users\wh898\.cline";                       Target = "D:\Users\wh898\.cline";                     Desc = "Cline AI" }
-    @{ Source = "C:\Users\wh898\.continue";                    Target = "D:\Users\wh898\.continue";                  Desc = "Continue 插件" }
-    @{ Source = "C:\Users\wh898\.fiddler";                     Target = "D:\Users\wh898\.fiddler";                   Desc = "Fiddler 调试代理" }
-    @{ Source = "C:\Users\wh898\.gemini";                      Target = "D:\Users\wh898\.gemini";                    Desc = "Google Gemini" }
-    @{ Source = "C:\Users\wh898\.hvigor";                      Target = "D:\Users\wh898\.hvigor";                    Desc = "Hvigor (HarmonyOS)" }
-    @{ Source = "C:\Users\wh898\.icube-remote-ssh";            Target = "D:\Users\wh898\.icube-remote-ssh";          Desc = "iCube 远程 SSH" }
-    @{ Source = "C:\Users\wh898\.InstallAnywhere";             Target = "D:\Users\wh898\.InstallAnywhere";           Desc = "InstallAnywhere" }
-    @{ Source = "C:\Users\wh898\.junie";                       Target = "D:\Users\wh898\.junie";                     Desc = "Junie AI" }
-    @{ Source = "C:\Users\wh898\.lingma";                      Target = "D:\Users\wh898\.lingma";                    Desc = "通义灵码" }
-    @{ Source = "C:\Users\wh898\.local";                       Target = "D:\Users\wh898\.local";                     Desc = "本地数据" }
-    @{ Source = "C:\Users\wh898\.matplotlib";                  Target = "D:\Users\wh898\.matplotlib";                Desc = "Matplotlib 缓存" }
-    @{ Source = "C:\Users\wh898\.lmstudio";                    Target = "D:\Users\wh898\.lmstudio";                  Desc = "LM Studio" }
-    @{ Source = "C:\Users\wh898\AppData\Local\lm-studio-updater"; Target = "D:\Users\wh898\AppData\Local\lm-studio-updater"; Desc = "LM Studio 更新器" }
-    @{ Source = "C:\Users\wh898\.ohpm";                        Target = "D:\Users\wh898\.ohpm";                      Desc = "OpenHarmony 包管理器" }
-    @{ Source = "C:\Users\wh898\.qwen";                        Target = "D:\Users\wh898\.qwen";                      Desc = "通义千问" }
-    @{ Source = "C:\Users\wh898\.trae-cn";                     Target = "D:\Users\wh898\.trae-cn";                   Desc = "TRAE Solo CN" }
-    @{ Source = "C:\Users\wh898\.ssh";                         Target = "D:\Users\wh898\.ssh";                       Desc = "SSH 密钥" }
-    @{ Source = "C:\Users\wh898\AppData\Local\Google";         Target = "D:\Users\wh898\AppData\Local\Google";       Desc = "Google/Chrome 数据" }
-    @{ Source = "C:\Users\wh898\AppData\Local\Siemens";        Target = "D:\Users\wh898\AppData\Local\Siemens";      Desc = "Siemens 软件数据 (NX/Solid Edge)" }
-    @{ Source = "C:\Users\wh898\PCManger\mdfs";                Target = "Volume{d6cc17c5-1733-4085-bce7-964f1e9f5de9}\"; Desc = "腾讯电脑管家卷挂载" }
-)
+$symlinks = Load-SymlinkConfig -Path $ConfigFile
 
 # ── 统计变量 ──────────────────────────────────────────────────────────────────
 

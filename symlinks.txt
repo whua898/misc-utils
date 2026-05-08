@@ -1,0 +1,53 @@
+# 符号链接迁移配置（每行一个源路径）
+# 格式：源路径 [-> 目标路径]
+# - 不指定目标时，自动将 C: 替换为 D:
+# - 用 -> 显式指定目标（如 F 盘、卷挂载等）
+# - # 开头为注释
+
+# === ProgramData ===
+C:\ProgramData\Intel Package Cache {1CEAC85D-2590-4760-800F-8DE5E91F3700}
+C:\ProgramData\LogiOptionsPlus
+C:\ProgramData\Logishrd
+C:\ProgramData\Microsoft\VisualStudio
+C:\ProgramData\Package Cache
+C:\ProgramData\Tongyi
+
+# === Program Files ===
+C:\Program Files\Common Files\Adobe\HelpCfg -> F:\Oftenused\adobe\Photoshop\App\Program Files\Common Files\Adobe\HelpCfg
+C:\Program Files (x86)\Common Files\Autodesk Shared\AdskLicensing\Current -> C:\Program Files (x86)\Common Files\Autodesk Shared\AdskLicensing\15.3.0.12981
+C:\Program Files (x86)\Common Files\Autodesk Shared -> D:\Program Files (x86)\Common Files\Autodesk Shared
+C:\Program Files (x86)\Microsoft -> D:\Program Files (x86)\Microsoft
+
+# === 用户目录 (wh898) ===
+C:\Users\wh898\.ai_completion
+C:\Users\wh898\.android
+C:\Users\wh898\.antigravity
+C:\Users\wh898\.antigravity_tools
+C:\Users\wh898\.cache
+C:\Users\wh898\.cherrystudio
+C:\Users\wh898\.claude-code-router
+C:\Users\wh898\.codex
+C:\Users\wh898\.config
+C:\Users\wh898\.claude
+C:\Users\wh898\.cline
+C:\Users\wh898\.continue
+C:\Users\wh898\.fiddler
+C:\Users\wh898\.gemini
+C:\Users\wh898\.hvigor
+C:\Users\wh898\.icube-remote-ssh
+C:\Users\wh898\.InstallAnywhere
+C:\Users\wh898\.junie
+C:\Users\wh898\.lingma
+C:\Users\wh898\.lmstudio
+C:\Users\wh898\AppData\Local\lm-studio-updater
+C:\Users\wh898\.local
+C:\Users\wh898\.matplotlib
+C:\Users\wh898\.ohpm
+C:\Users\wh898\.qwen
+C:\Users\wh898\.trae-cn
+C:\Users\wh898\.ssh
+C:\Users\wh898\AppData\Local\Google
+C:\Users\wh898\AppData\Local\Siemens
+
+# === 卷挂载 ===
+C:\Users\wh898\PCManger\mdfs -> Volume{d6cc17c5-1733-4085-bce7-964f1e9f5de9}\

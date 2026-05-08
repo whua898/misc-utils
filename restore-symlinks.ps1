@@ -477,7 +477,84 @@ function Process-SymlinkItem {
     }
 }
 
+# ── 5. 自动追加未链接的 . 开头目录 ────────────────────────────────────────────
+
+function Add-MissingDotDirs {
+    <#
+    .SYNOPSIS
+        扫描当前用户目录下 . 开头的真实目录，自动追加到 symlinks.txt。
+    .DESCRIPTION
+        仅追加未建立软连接且不在配置中的目录。
+    #>
+    param([string]$ConfigPath, [string]$UserDir = "$env:USERPROFILE")
+
+    $existingLines = Get-Content $ConfigPath -Encoding UTF8 -ErrorAction SilentlyContinue
+    if (-not $existingLines) { return }
+
+    # 扫描用户目录下 . 开头的真实目录（排除符号链接）
+    $dotDirs = Get-ChildItem $UserDir -Directory -Force -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -like '.*' -and
+                       -not ($_.Attributes -band [System.IO.FileAttributes]::ReparsePoint) }
+
+    if (-not $dotDirs -or $dotDirs.Count -eq 0) { return }
+
+    # 找出不在配置中的目录
+    $newDirs = @()
+    foreach ($dir in $dotDirs) {
+        $src = $dir.FullName
+        $found = $false
+        foreach ($line in $existingLines) {
+            if ($line.Trim() -match [regex]::Escape($src)) {
+                $found = $true
+                break
+            }
+        }
+        if (-not $found) {
+            $newDirs += $dir.Name
+        }
+    }
+
+    if ($newDirs.Count -eq 0) { return }
+
+    Write-Status "发现 $($newDirs.Count) 个新 . 目录，正在追加到 symlinks.txt..." -Color Cyan
+
+    # 按字母排序
+    $newDirs = $newDirs | Sort-Object
+
+    # 找到 # === 卷挂载 === 行，在此之前插入
+    $insertIndex = -1
+    for ($i = 0; $i -lt $existingLines.Count; $i++) {
+        if ($existingLines[$i] -match '^#\s*===\s*卷挂载') {
+            $insertIndex = $i
+            break
+        }
+    }
+
+    if ($insertIndex -lt 0) { $insertIndex = $existingLines.Count }
+
+    $newContent = @()
+    for ($i = 0; $i -lt $insertIndex; $i++) {
+        $newContent += $existingLines[$i]
+    }
+    foreach ($d in $newDirs) {
+        $newContent += "C:\Users\wh898\$d"
+        Write-Status "  + $d" -Color Green
+    }
+    # 确保前面有空行分隔
+    if ($newContent[$newContent.Count - 1] -ne '') { $newContent += '' }
+    for ($i = $insertIndex; $i -lt $existingLines.Count; $i++) {
+        $newContent += $existingLines[$i]
+    }
+
+    $newContent -join "`r`n" | Out-File -FilePath $ConfigPath -Encoding UTF8
+}
+
 # ── 符号链接配置（从 symlinks.txt 加载） ───────────────────────────────────────
+
+# 自动追加未链接目录
+if (-not $WhatIf) {
+    Add-MissingDotDirs -ConfigPath $ConfigFile
+}
 
 $symlinks = Load-SymlinkConfig -Path $ConfigFile
 

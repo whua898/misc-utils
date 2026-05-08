@@ -40,6 +40,11 @@
         "Type":  "File"
     },
     {
+        "Target":  "D:\\Users\\wh898\\.ai_completion",
+        "Source":  "C:\\Users\\wh898\\.ai_completion",
+        "Type":  "Directory"
+    },
+    {
         "Target":  "D:\\Users\\wh898\\.android",
         "Source":  "C:\\Users\\wh898\\.android",
         "Type":  "Directory"
@@ -57,6 +62,21 @@
     {
         "Target":  "D:\\Users\\wh898\\.cache",
         "Source":  "C:\\Users\\wh898\\.cache",
+        "Type":  "Directory"
+    },
+    {
+        "Target":  "D:\\Users\\wh898\\.claude-code-router",
+        "Source":  "C:\\Users\\wh898\\.claude-code-router",
+        "Type":  "Directory"
+    },
+    {
+        "Target":  "D:\\Users\\wh898\\.codex",
+        "Source":  "C:\\Users\\wh898\\.codex",
+        "Type":  "Directory"
+    },
+    {
+        "Target":  "D:\\Users\\wh898\\.config",
+        "Source":  "C:\\Users\\wh898\\.config",
         "Type":  "Directory"
     },
     {
@@ -95,6 +115,21 @@
         "Type":  "Directory"
     },
     {
+        "Target":  "D:\\Users\\wh898\\.icube-remote-ssh",
+        "Source":  "C:\\Users\\wh898\\.icube-remote-ssh",
+        "Type":  "Directory"
+    },
+    {
+        "Target":  "D:\\Users\\wh898\\.InstallAnywhere",
+        "Source":  "C:\\Users\\wh898\\.InstallAnywhere",
+        "Type":  "Directory"
+    },
+    {
+        "Target":  "D:\\Users\\wh898\\.junie",
+        "Source":  "C:\\Users\\wh898\\.junie",
+        "Type":  "Directory"
+    },
+    {
         "Target":  "D:\\Users\\wh898\\.lingma",
         "Source":  "C:\\Users\\wh898\\.lingma",
         "Type":  "Directory"
@@ -102,6 +137,16 @@
     {
         "Target":  "D:\\Users\\wh898\\.lmstudio",
         "Source":  "C:\\Users\\wh898\\.lmstudio",
+        "Type":  "Directory"
+    },
+    {
+        "Target":  "D:\\Users\\wh898\\.local",
+        "Source":  "C:\\Users\\wh898\\.local",
+        "Type":  "Directory"
+    },
+    {
+        "Target":  "D:\\Users\\wh898\\.matplotlib",
+        "Source":  "C:\\Users\\wh898\\.matplotlib",
         "Type":  "Directory"
     },
     {

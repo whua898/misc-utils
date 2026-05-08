@@ -1,7 +1,7 @@
 ========================================
 C盘软连接汇总报告
 生成时间: 2026-04-16
-更新时间: 2026-04-18 (新增UWP回环解除配置)
+更新时间: 2026-05-09 (新增9个.开头子目录软连接)
 ========================================
 
 【新增：UWP应用回环解除配置】
@@ -20,19 +20,19 @@ C盘软连接汇总报告
 详细说明请查看：SYMLINKS-README.md
 
 【统计摘要】
-总计软连接: 26个
-- 目录链接: 21个
+总计软连接: 35个
+- 目录链接: 30个
 - 文件链接: 5个 (Windows系统应用)
 
 按目标位置分类:
-- D盘: 18个 (用户配置和Logitech数据)
+- D盘: 27个 (用户配置和Logitech数据)
 - F盘: 1个 (Adobe Photoshop)
 - C盘内部: 1个 (Autodesk版本链接)
 - 卷挂载点: 1个 (腾讯电脑管家)
 - 系统应用: 5个 (Windows Store应用)
 
 ========================================
-详细清单 (21个有效软连接)
+详细清单 (30个有效软连接)
 ========================================
 
 【ProgramData 目录】(2个)
@@ -55,75 +55,111 @@ C盘软连接汇总报告
    → C:\Program Files (x86)\Common Files\Autodesk Shared\AdskLicensing\15.3.0.12981
    说明: Autodesk 许可服务版本链接
 
-【用户配置目录 - D盘】(16个)
+【用户配置目录 - D盘】(25个)
 ----------------------------------------
-5. C:\Users\wh898\.android
+5. C:\Users\wh898\.ai_completion
+   → D:\Users\wh898\.ai_completion
+   说明: AI 代码补全配置
+
+6. C:\Users\wh898\.android
    → D:\Users\wh898\.android
    说明: Android SDK/模拟器数据
 
-6. C:\Users\wh898\.antigravity
+7. C:\Users\wh898\.antigravity
    → D:\Users\wh898\.antigravity
    说明: Antigravity AI工具配置
 
-7. C:\Users\wh898\.antigravity_tools
+8. C:\Users\wh898\.antigravity_tools
    → D:\Users\wh898\.antigravity_tools
    说明: Antigravity 工具集
 
-8. C:\Users\wh898\.cache
+9. C:\Users\wh898\.cache
    → D:\Users\wh898\.cache
    说明: 应用程序缓存
 
-9. C:\Users\wh898\.cherrystudio
-   → D:\Users\wh898\.cherrystudio
-   说明: Cherry Studio LLM客户端
+10. C:\Users\wh898\.claude-code-router
+    → D:\Users\wh898\.claude-code-router
+    说明: Claude Code Router
 
-10. C:\Users\wh898\.claude
+11. C:\Users\wh898\.codex
+    → D:\Users\wh898\.codex
+    说明: Codex AI 配置
+
+12. C:\Users\wh898\.config
+    → D:\Users\wh898\.config
+    说明: 应用通用配置
+
+13. C:\Users\wh898\.cherrystudio
+    → D:\Users\wh898\.cherrystudio
+    说明: Cherry Studio LLM客户端
+
+14. C:\Users\wh898\.claude
     → D:\Users\wh898\.claude
     说明: Claude AI 配置
 
-11. C:\Users\wh898\.cline
+15. C:\Users\wh898\.cline
     → D:\Users\wh898\.cline
     说明: Cline AI编程助手
 
-12. C:\Users\wh898\.continue
+16. C:\Users\wh898\.continue
     → D:\Users\wh898\.continue
     说明: Continue AI编程插件
 
-13. C:\Users\wh898\.fiddler
+17. C:\Users\wh898\.fiddler
     → D:\Users\wh898\.fiddler
     说明: Fiddler 网络抓包工具
 
-14. C:\Users\wh898\.gemini
+18. C:\Users\wh898\.gemini
     → D:\Users\wh898\.gemini
     说明: Google Gemini AI 配置
 
-15. C:\Users\wh898\.hvigor
+19. C:\Users\wh898\.hvigor
     → D:\Users\wh898\.hvigor
     说明: Hvigor 构建工具(HarmonyOS)
 
-16. C:\Users\wh898\.lingma
+20. C:\Users\wh898\.icube-remote-ssh
+    → D:\Users\wh898\.icube-remote-ssh
+    说明: iCube 远程 SSH 配置
+
+21. C:\Users\wh898\.InstallAnywhere
+    → D:\Users\wh898\.InstallAnywhere
+    说明: InstallAnywhere 安装器
+
+22. C:\Users\wh898\.junie
+    → D:\Users\wh898\.junie
+    说明: Junie AI 助手
+
+23. C:\Users\wh898\.lingma
     → D:\Users\wh898\.lingma
     说明: 通义灵码 AI编程助手
 
-17. C:\Users\wh898\.ohpm
+24. C:\Users\wh898\.local
+    → D:\Users\wh898\.local
+    说明: 本地应用数据
+
+25. C:\Users\wh898\.matplotlib
+    → D:\Users\wh898\.matplotlib
+    说明: Matplotlib 配置缓存
+
+26. C:\Users\wh898\.ohpm
     → D:\Users\wh898\.ohpm
     说明: OpenHarmony 包管理器
 
-18. C:\Users\wh898\.qwen
+27. C:\Users\wh898\.qwen
     → D:\Users\wh898\.qwen
     说明: 通义千问 AI 配置
 
-19. C:\Users\wh898\.trae-cn
+28. C:\Users\wh898\.trae-cn
     → D:\Users\wh898\.trae-cn
     说明: TRAE Solo CN AI 编程助手
 
-20. C:\Users\wh898\.ssh
+29. C:\Users\wh898\.ssh
     → D:\Users\wh898\.ssh
     说明: SSH 密钥和配置文件
 
 【卷挂载点】(1个)
 ----------------------------------------
-21. C:\Users\wh898\PCManger\mdfs
+30. C:\Users\wh898\PCManger\mdfs
     → Volume{d6cc17c5-1733-4085-bce7-964f1e9f5de9}\
     说明: 腾讯电脑管家虚拟文件系统(卷挂载)
 
@@ -140,7 +176,7 @@ C盘软连接汇总报告
 ========================================
 
 D盘存储的内容(原C盘):
-- 用户配置目录: 约15个AI工具和开发环境配置
+- 用户配置目录: 约25个AI工具和开发环境配置
 - Logitech数据: 鼠标键盘驱动配置和缓存
 - 估计节省C盘空间: 数GB级别(取决于各工具缓存大小)
 
@@ -153,13 +189,13 @@ F盘存储的内容:
 
 1. migrate-logitech-disk.ps1
    用途: 迁移Logitech目录到D盘
-   
+
 2. export-symlinks.ps1
    用途: 导出当前所有软连接到JSON备份
-   
+
 3. restore-symlinks.ps1
    用途: 从备份恢复所有软连接
-   
+
 4. symlinks-backup.json
    用途: 软连接配置备份数据
 
@@ -169,7 +205,7 @@ F盘存储的内容:
 
 ✅ 定期备份:
    运行 export-symlinks.ps1 更新 symlinks-backup.json
-   
+
 ✅ 系统重装前:
    1. 运行 export-symlinks.ps1 备份
    2. 将 JSON 文件保存到云盘/U盘
@@ -200,6 +236,11 @@ F盘存储的内容:
 - 新增 TRAE Solo CN (.trae-cn) 软连接配置
 - 更新备份和恢复脚本
 - 当前软连接总数: 26个
+
+2026-05-09:
+- 新增9个 . 开头子目录软连接 (.ai_completion, .claude-code-router, .codex, .config, .icube-remote-ssh, .InstallAnywhere, .junie, .local, .matplotlib)
+- 更新 restore-symlinks.ps1、symlinks-backup.json、C盘软连接汇总.txt
+- 当前软连接总数: 35个
 
 ========================================
 快速命令参考

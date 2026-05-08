@@ -10,6 +10,11 @@
 
 #Requires -RunAsAdministrator
 
+[CmdletBinding(SupportsShouldProcess)]
+param(
+    [switch]$WhatIf
+)
+
 $ErrorActionPreference = "Continue"
 
 # ── 辅助函数 ──────────────────────────────────────────────────────────────────
@@ -30,14 +35,6 @@ function Invoke-Robocopy {
     <#
     .SYNOPSIS
         使用 robocopy 拷贝目录，返回 $true/$false
-    .PARAMETER Source
-        源路径
-    .PARAMETER Dest
-        目标路径
-    .PARAMETER Retry
-        重试次数，默认 3
-    .PARAMETER WaitSec
-        重试间隔秒数，默认 5
     #>
     param(
         [string]$Source,
@@ -56,26 +53,23 @@ function Invoke-Robocopy {
     Write-Status "来源: $Source" -Color Gray
     Write-Status "目标: $Dest" -Color Gray
 
+    if ($WhatIf) {
+        Write-Status "[DRY RUN] 模拟 robocopy 迁移" -Color Yellow
+        return $true
+    }
+
     try {
-        $argsList = @(
-            $Source.TrimEnd('\'),
-            $Dest.TrimEnd('\'),
-            '/E',          # 包含子目录（含空目录）
-            '/COPY:DAT',   # 复制数据/属性/时间戳
-            "/R:$Retry",
-            "/W:$WaitSec",
-            '/NP', '/NFL', '/NDL'
-        )
+        # 直接调用 robocopy 以便捕获输出
+        $output = & robocopy $Source.TrimEnd('\') $Dest.TrimEnd('\') `
+            /E /COPY:DAT "/R:$Retry" "/W:$WaitSec" /NP /NFL /NDL 2>&1
 
-        $proc = Start-Process -FilePath "robocopy.exe" -ArgumentList $argsList `
-            -Wait -NoNewWindow -PassThru
-
-        if ($proc.ExitCode -lt 8) {
+        if ($LASTEXITCODE -lt 8) {
             Write-Status "[OK] 数据迁移完成" -Color Green
             return $true
         }
 
-        Write-Status "[WARN] robocopy 退出码: $($proc.ExitCode)" -Color Yellow
+        Write-Status "[WARN] robocopy 退出码: $LASTEXITCODE" -Color Yellow
+        Write-Status "  输出: $($output -join '; ')" -Color Gray
         return $false
     } catch {
         Write-Status "[FAIL] 迁移异常: $_" -Color Red
@@ -144,7 +138,9 @@ function Stop-LockingProcesses {
                 if ($p.ProcessName -eq 'explorer') { continue }
 
                 try {
-                    Stop-Process -Id $p.Id -Force -ErrorAction Stop
+                    if (-not $WhatIf) {
+                        Stop-Process -Id $p.Id -Force -ErrorAction Stop
+                    }
                     Write-Status "已终止: $($p.ProcessName) (PID: $($p.Id))" -Color Gray
                     $stopped += $p.Id
                 } catch {
@@ -154,9 +150,11 @@ function Stop-LockingProcesses {
         }
 
         if ($patterns.Count -eq 0) {
-            Write-Status "[OK] 未检测到锁定进程" -Color Green
+            Write-Status "[OK] 未检测到匹配的进程模式" -Color Green
         } elseif ($stopped.Count -gt 0) {
             Write-Status "已终止 $($stopped.Count) 个进程" -Color Cyan
+        } else {
+            Write-Status "未找到运行中的匹配进程" -Color Gray
         }
 
         # ── 停止相关 Windows 服务 ──
@@ -171,13 +169,17 @@ function Stop-LockingProcesses {
             $svcPatterns += 'Logi*', 'LGHUB*'
         }
 
+        # 缓存所有服务信息，避免重复调用 Get-Service
+        $allServices = Get-Service -ErrorAction SilentlyContinue
         foreach ($pattern in $svcPatterns) {
-            $svc = Get-Service -Name $pattern -ErrorAction SilentlyContinue
+            $svc = $allServices | Where-Object { $_.Name -like $pattern } | Select-Object -First 1
             if ($svc -and $svc.Status -eq 'Running') {
                 try {
                     Write-Status "停止服务: $($svc.DisplayName)..." -Color Gray
-                    Stop-Service -Name $svc.Name -Force -ErrorAction Stop
-                    Set-Service -Name $svc.Name -StartupType Disabled -ErrorAction SilentlyContinue
+                    if (-not $WhatIf) {
+                        Stop-Service -Name $svc.Name -Force -ErrorAction Stop
+                        Set-Service -Name $svc.Name -StartupType Disabled -ErrorAction SilentlyContinue
+                    }
                     Write-Status "[OK] 服务已停止" -Color Green
                     # 记录以便恢复
                     $script:stoppedServices[$svc.Name] = $svc.StartType
@@ -188,7 +190,7 @@ function Stop-LockingProcesses {
         }
 
         # 等 2 秒让句柄释放
-        if ($stopped.Count -gt 0 -or (Get-Service -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq 'Stopped' -and $_.Name -in @($svcPatterns | ForEach-Object { Get-Service -Name $_ -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name }) })) {
+        if ($stopped.Count -gt 0) {
             Start-Sleep -Seconds 2
         }
 
@@ -224,14 +226,15 @@ function Remove-DirectoryWithForce {
     <#
     .SYNOPSIS
         递归删除目录，遇到锁定自动查杀进程后重试。
-    .PARAMETER Path
-        要删除的目录路径
-    .PARAMETER MaxRetries
-        最大重试次数，默认 3
     .RETURNS
         $true 删除成功 / $false 最终失败
     #>
     param([string]$Path, [int]$MaxRetries = 3)
+
+    if ($WhatIf) {
+        Write-Status "[DRY RUN] 模拟删除: $Path" -Color Yellow
+        return $true
+    }
 
     for ($i = 1; $i -le $MaxRetries; $i++) {
         try {
@@ -268,10 +271,6 @@ function New-SymlinkWithVerify {
     <#
     .SYNOPSIS
         创建目录符号链接并验证。
-    .PARAMETER Source
-        符号链接路径（C 盘）
-    .PARAMETER Target
-        目标路径
     .RETURNS
         $true 成功 / $false 失败
     #>
@@ -290,6 +289,11 @@ function New-SymlinkWithVerify {
         if (-not (Remove-DirectoryWithForce -Path $Source)) {
             return $false
         }
+    }
+
+    if ($WhatIf) {
+        Write-Status "[DRY RUN] 模拟创建符号链接: $Source → $Target" -Color Yellow
+        return $true
     }
 
     try {
@@ -311,6 +315,96 @@ function New-SymlinkWithVerify {
     }
 }
 
+# ── 处理符号链接 ──────────────────────────────────────────────────────────────
+
+function Process-SymlinkItem {
+    param(
+        [hashtable]$Link,
+        [int]$Index,
+        [int]$Total
+    )
+
+    Write-ProgressItem -Index $Index -Total $Total -Desc $Link.Desc
+    Write-Status "来源: $($Link.Source)" -Color Green
+    Write-Status "目标: $($Link.Target)" -Color Green
+
+    # ─ 场景 A：已经是符号链接 ─
+    if (Test-Path $Link.Source) {
+        try {
+            $item = Get-Item $Link.Source -ErrorAction Stop
+            if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+                Write-Status "状态: [跳过] 符号链接已存在" -Color Green
+                return @{ Result = 'skip' }
+            }
+        } catch {
+            # 路径存在但因权限无法读取属性，按真实目录处理
+            Write-Status "无法读取路径属性，按真实目录处理" -Color Yellow
+        }
+    }
+
+    # ─ 场景 B：源路径是真实目录 → 需要迁移 ─
+    if (Test-Path $Link.Source) {
+        Write-Status "源路径是真实目录，准备迁移..." -Color Yellow
+
+        $targetExists = Test-Path $Link.Target
+        $targetNotEmpty = $targetExists -and @(Get-ChildItem $Link.Target -ErrorAction SilentlyContinue).Count -gt 0
+
+        if (-not $targetNotEmpty) {
+            if (Invoke-Robocopy -Source $Link.Source -Dest $Link.Target) {
+                $script:stats.migrate++
+            }
+        } else {
+            Write-Status "目标路径已有数据，跳过复制" -Color Cyan
+        }
+
+        # 删除源目录（自动处理锁定）
+        if (-not (Remove-DirectoryWithForce -Path $Link.Source)) {
+            $script:stats.fail++
+            return @{ Result = 'fail' }
+        }
+
+        # 创建符号链接
+        if (New-SymlinkWithVerify -Source $Link.Source -Target $Link.Target) {
+            $script:stats.success++
+            return @{ Result = 'success' }
+        } else {
+            $script:stats.fail++
+            return @{ Result = 'fail' }
+        }
+    }
+
+    # ─ 场景 C：源路径不存在 → 直接创建符号链接 ─
+    # 卷挂载由系统管理，跳过
+    if ($Link.Target -like "Volume{*") {
+        Write-Status "跳过卷挂载（由系统管理）" -Color Yellow
+        $script:stats.skip++
+        return @{ Result = 'skip' }
+    }
+
+    # 确保目标存在
+    if (-not (Test-Path $Link.Target)) {
+        Write-Status "目标路径不存在，创建目录..." -Color Yellow
+        try {
+            if (-not $WhatIf) {
+                New-Item -ItemType Directory -Path $Link.Target -Force -ErrorAction Stop | Out-Null
+            }
+            Write-Status "[OK] 目录已创建" -Color Green
+        } catch {
+            Write-Status "[FAIL] 创建目录失败: $_" -Color Red
+            $script:stats.fail++
+            return @{ Result = 'fail' }
+        }
+    }
+
+    if (New-SymlinkWithVerify -Source $Link.Source -Target $Link.Target) {
+        $script:stats.success++
+        return @{ Result = 'success' }
+    } else {
+        $script:stats.fail++
+        return @{ Result = 'fail' }
+    }
+}
+
 # ── 符号链接配置 ──────────────────────────────────────────────────────────────
 
 $symlinks = @(
@@ -329,10 +423,14 @@ $symlinks = @(
     @{ Source = "C:\Program Files (x86)\Microsoft";             Target = "D:\Program Files (x86)\Microsoft";          Desc = "Microsoft x86 应用数据" }
 
     # 用户目录 (wh898)
+    @{ Source = "C:\Users\wh898\.ai_completion";               Target = "D:\Users\wh898\.ai_completion";             Desc = "AI 代码补全" }
     @{ Source = "C:\Users\wh898\.android";                     Target = "D:\Users\wh898\.android";                   Desc = "Android SDK/模拟器" }
     @{ Source = "C:\Users\wh898\.antigravity";                 Target = "D:\Users\wh898\.antigravity";               Desc = "Antigravity AI" }
     @{ Source = "C:\Users\wh898\.antigravity_tools";           Target = "D:\Users\wh898\.antigravity_tools";         Desc = "Antigravity 工具" }
     @{ Source = "C:\Users\wh898\.cache";                       Target = "D:\Users\wh898\.cache";                     Desc = "应用缓存" }
+    @{ Source = "C:\Users\wh898\.claude-code-router";          Target = "D:\Users\wh898\.claude-code-router";        Desc = "Claude Code Router" }
+    @{ Source = "C:\Users\wh898\.codex";                       Target = "D:\Users\wh898\.codex";                     Desc = "Codex AI" }
+    @{ Source = "C:\Users\wh898\.config";                      Target = "D:\Users\wh898\.config";                    Desc = "应用配置" }
     @{ Source = "C:\Users\wh898\.cherrystudio";                Target = "D:\Users\wh898\.cherrystudio";              Desc = "Cherry Studio" }
     @{ Source = "C:\Users\wh898\.claude";                      Target = "D:\Users\wh898\.claude";                    Desc = "Claude AI" }
     @{ Source = "C:\Users\wh898\.cline";                       Target = "D:\Users\wh898\.cline";                     Desc = "Cline AI" }
@@ -340,7 +438,12 @@ $symlinks = @(
     @{ Source = "C:\Users\wh898\.fiddler";                     Target = "D:\Users\wh898\.fiddler";                   Desc = "Fiddler 调试代理" }
     @{ Source = "C:\Users\wh898\.gemini";                      Target = "D:\Users\wh898\.gemini";                    Desc = "Google Gemini" }
     @{ Source = "C:\Users\wh898\.hvigor";                      Target = "D:\Users\wh898\.hvigor";                    Desc = "Hvigor (HarmonyOS)" }
+    @{ Source = "C:\Users\wh898\.icube-remote-ssh";            Target = "D:\Users\wh898\.icube-remote-ssh";          Desc = "iCube 远程 SSH" }
+    @{ Source = "C:\Users\wh898\.InstallAnywhere";             Target = "D:\Users\wh898\.InstallAnywhere";           Desc = "InstallAnywhere" }
+    @{ Source = "C:\Users\wh898\.junie";                       Target = "D:\Users\wh898\.junie";                     Desc = "Junie AI" }
     @{ Source = "C:\Users\wh898\.lingma";                      Target = "D:\Users\wh898\.lingma";                    Desc = "通义灵码" }
+    @{ Source = "C:\Users\wh898\.local";                       Target = "D:\Users\wh898\.local";                     Desc = "本地数据" }
+    @{ Source = "C:\Users\wh898\.matplotlib";                  Target = "D:\Users\wh898\.matplotlib";                Desc = "Matplotlib 缓存" }
     @{ Source = "C:\Users\wh898\.lmstudio";                    Target = "D:\Users\wh898\.lmstudio";                  Desc = "LM Studio" }
     @{ Source = "C:\Users\wh898\AppData\Local\lm-studio-updater"; Target = "D:\Users\wh898\AppData\Local\lm-studio-updater"; Desc = "LM Studio 更新器" }
     @{ Source = "C:\Users\wh898\.ohpm";                        Target = "D:\Users\wh898\.ohpm";                      Desc = "OpenHarmony 包管理器" }
@@ -355,7 +458,7 @@ $symlinks = @(
 # ── 统计变量 ──────────────────────────────────────────────────────────────────
 
 $script:stoppedServices = @{}
-$stats = @{
+$script:stats = @{
     success   = 0
     skip      = 0
     fail      = 0
@@ -366,6 +469,9 @@ $stats = @{
 
 Clear-Host
 Write-Host "=== 恢复 C 盘符号链接 ===" -ForegroundColor Cyan
+if ($WhatIf) {
+    Write-Host "[预览模式] 不会执行实际更改" -ForegroundColor Magenta
+}
 Write-Host ""
 Write-Host "共 $($symlinks.Count) 项待处理" -ForegroundColor Yellow
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent())
@@ -374,84 +480,17 @@ Write-Host "管理员权限: $isAdmin" -ForegroundColor Cyan
 Write-Host "模式: 自动迁移 C → D 并创建符号链接" -ForegroundColor Green
 Write-Host ""
 
-# ── 主循环 ────────────────────────────────────────────────────────────────────
+# ── 主循环（用 try/finally 保证服务恢复） ─────────────────────────────────────
 
-foreach ($link in $symlinks) {
-    $idx = [array]::IndexOf($symlinks, $link) + 1
-    Write-ProgressItem -Index $idx -Total $symlinks.Count -Desc $link.Desc
-    Write-Status "来源: $($link.Source)" -Color Green
-    Write-Status "目标: $($link.Target)" -Color Green
-
-    # ─ 场景 A：已经是符号链接 ─
-    if ((Test-Path $link.Source) -and ((Get-Item $link.Source -ErrorAction Stop).Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
-        Write-Status "状态: [跳过] 符号链接已存在" -Color Green
-        $stats.skip++
-        continue
+try {
+    foreach ($link in $symlinks) {
+        $idx = [array]::IndexOf($symlinks, $link) + 1
+        $null = Process-SymlinkItem -Link $link -Index $idx -Total $symlinks.Count
     }
-
-    # ─ 场景 B：源路径是真实目录 → 需要迁移 ─
-    if (Test-Path $link.Source) {
-        Write-Status "源路径是真实目录，准备迁移..." -Color Yellow
-
-        $targetExists = Test-Path $link.Target
-        $targetNotEmpty = $targetExists -and @(Get-ChildItem $link.Target -ErrorAction SilentlyContinue).Count -gt 0
-
-        if (-not $targetNotEmpty) {
-            if (Invoke-Robocopy -Source $link.Source -Dest $link.Target) {
-                $stats.migrate++
-            }
-        } else {
-            Write-Status "目标路径已有数据，跳过复制" -Color Cyan
-        }
-
-        # 删除源目录（自动处理锁定）
-        if (-not (Remove-DirectoryWithForce -Path $link.Source)) {
-            $stats.fail++
-            continue
-        }
-
-        # 创建符号链接
-        if (New-SymlinkWithVerify -Source $link.Source -Target $link.Target) {
-            $stats.success++
-        } else {
-            $stats.fail++
-        }
-        continue
-    }
-
-    # ─ 场景 C：源路径不存在 → 直接创建符号链接 ─
-    if (-not (Test-Path $link.Source)) {
-        # 卷挂载由系统管理，跳过
-        if ($link.Target -like "Volume{*") {
-            Write-Status "跳过卷挂载（由系统管理）" -Color Yellow
-            $stats.fail++
-            continue
-        }
-
-        # 确保目标存在
-        if (-not (Test-Path $link.Target)) {
-            Write-Status "目标路径不存在，创建目录..." -Color Yellow
-            try {
-                New-Item -ItemType Directory -Path $link.Target -Force -ErrorAction Stop | Out-Null
-                Write-Status "[OK] 目录已创建" -Color Green
-            } catch {
-                Write-Status "[FAIL] 创建目录失败: $_" -Color Red
-                $stats.fail++
-                continue
-            }
-        }
-
-        if (New-SymlinkWithVerify -Source $link.Source -Target $link.Target) {
-            $stats.success++
-        } else {
-            $stats.fail++
-        }
-    }
+} finally {
+    # 无论成功失败，确保恢复被禁用的服务
+    Restore-Services
 }
-
-# ── 恢复被禁用的服务 ──────────────────────────────────────────────────────────
-
-Restore-Services
 
 # ── 汇总 ──────────────────────────────────────────────────────────────────────
 
@@ -461,15 +500,20 @@ Write-Host "=== 恢复完成 ===" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
-Write-Host "  成功创建: $($stats.success)"   -ForegroundColor Green
-Write-Host "  已存在:   $($stats.skip)"      -ForegroundColor Yellow
-Write-Host "  迁移数据: $($stats.migrate)"   -ForegroundColor Cyan
-Write-Host "  失败:     $($stats.fail)"      -ForegroundColor Red
+Write-Host "  成功创建: $($script:stats.success)"   -ForegroundColor Green
+Write-Host "  已存在:   $($script:stats.skip)"      -ForegroundColor Yellow
+Write-Host "  迁移数据: $($script:stats.migrate)"   -ForegroundColor Cyan
+Write-Host "  失败:     $($script:stats.fail)"      -ForegroundColor Red
 Write-Host ""
 
-if ($stats.success -gt 0)   { Write-Host "✓ 成功创建 $($stats.success) 个符号链接" -ForegroundColor Green }
-if ($stats.fail -gt 0)      { Write-Host "⚠ 有 $($stats.fail) 个失败，请检查上方错误信息" -ForegroundColor Red; Write-Host "  1. 以管理员身份运行"; Write-Host "  2. 关闭使用中路径的应用"; Write-Host "  3. 检查目标路径是否存在" }
-if ($stats.fail -eq 0)      { Write-Host "所有符号链接已成功恢复！" -ForegroundColor Green }
+if ($script:stats.success -gt 0) { Write-Host "✓ 成功创建 $($script:stats.success) 个符号链接" -ForegroundColor Green }
+if ($script:stats.fail -gt 0)    {
+    Write-Host "⚠ 有 $($script:stats.fail) 个失败，请检查上方错误信息" -ForegroundColor Red
+    Write-Host "  1. 以管理员身份运行"
+    Write-Host "  2. 关闭使用中路径的应用"
+    Write-Host "  3. 检查目标路径是否存在"
+}
+if ($script:stats.fail -eq 0)    { Write-Host "所有符号链接已成功恢复！" -ForegroundColor Green }
 
 Write-Host ""
 Write-Host "按任意键退出..." -ForegroundColor Gray

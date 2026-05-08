@@ -14,10 +14,16 @@
 [CmdletBinding()]
 param(
     [switch]$WhatIf,
-    [string]$ConfigFile = "$PSScriptRoot\symlinks.txt"
+    [string]$ConfigFile = ""
 )
 
 $ErrorActionPreference = "Continue"
+
+# 修复：-File 模式下 $PSScriptRoot 可能为空，用脚本所在目录兜底
+if (-not $ConfigFile) {
+    $scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
+    $ConfigFile = Join-Path $scriptDir "symlinks.txt"
+}
 
 # ── 辅助函数 ──────────────────────────────────────────────────────────────────
 

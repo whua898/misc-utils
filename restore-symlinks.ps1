@@ -260,7 +260,7 @@ function Stop-LockingProcesses {
                         Set-Service -Name $svc.Name -StartupType Disabled -ErrorAction SilentlyContinue
                     }
                     Write-Status "[OK] 服务已停止" -Color Green
-                    $script:stoppedServices[$svc.Name] = $svc.StartType
+                    $script:stoppedServices[$svc.Name] = if ($svc.StartType) { $svc.StartType } else { 'Manual' }
                 } catch {
                     Write-Status "[WARN] 未能停止服务: $($_.Exception.Message)" -Color Yellow
                 }
@@ -303,6 +303,15 @@ function Remove-DirectoryWithForce {
         $true 删除成功 / $false 最终失败
     #>
     param([string]$Path, [int]$MaxRetries = 3)
+
+    # 安全防护：拒绝删除系统关键路径
+    if ([string]::IsNullOrWhiteSpace($Path) -or
+        $Path -match '^[A-Z]:\\?$' -or
+        $Path -eq "$env:SystemRoot" -or
+        $Path -eq "$env:SystemRoot\") {
+        Write-Status "[FATAL] 拒绝删除系统关键路径: $Path" -Color Red
+        return $false
+    }
 
     if ($WhatIf) {
         Write-Status "[DRY RUN] 模拟删除: $Path" -Color Yellow
@@ -407,20 +416,19 @@ function Process-SymlinkItem {
     Write-Status "目标: $($Link.Target)" -Color Green
 
     # ─ 场景 A：已经是符号链接 ─
-    if (Test-Path $Link.Source) {
-        try {
-            $item = Get-Item $Link.Source -ErrorAction Stop
-            if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
-                Write-Status "状态: [跳过] 符号链接已存在" -Color Green
-                return @{ Result = 'skip' }
-            }
-        } catch {
-            Write-Status "无法读取路径属性，按真实目录处理" -Color Yellow
+    # 修复：先用 Get-Item -Force 检测损坏的符号链接（Test-Path 对损坏链接返回 $false）
+    $existingItem = Get-Item $Link.Source -Force -ErrorAction SilentlyContinue
+    if ($existingItem -and ($existingItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+        if (Test-Path $Link.Source) {
+            Write-Status "状态: [跳过] 符号链接已存在" -Color Green
+            return @{ Result = 'skip' }
+        } else {
+            Write-Status "状态: [修复] 损坏的符号链接，重新创建" -Color Yellow
+            Remove-Item $Link.Source -Force -ErrorAction SilentlyContinue
+            # 继续到场景 C 重新创建
         }
-    }
-
-    # ─ 场景 B：源路径是真实目录 → 需要迁移 ─
-    if (Test-Path $Link.Source) {
+    } elseif (Test-Path $Link.Source) {
+        # ─ 场景 B：源路径是真实目录 → 需要迁移 ─
         Write-Status "源路径是真实目录，准备迁移..." -Color Yellow
 
         $targetExists = Test-Path $Link.Target
@@ -445,7 +453,8 @@ function Process-SymlinkItem {
 
         # 创建符号链接
         if (New-SymlinkWithVerify -Source $Link.Source -Target $Link.Target) {
-            return @{ Result = 'success' }
+            # 标记为迁移操作（用于统计）
+            return @{ Result = 'success'; Migrate = $true }
         } else {
             return @{ Result = 'fail' }
         }
@@ -563,8 +572,6 @@ $script:stats = @{
     fail      = 0
     migrate   = 0
 }
-# 修复：migrate 改在主循环内由 Process-SymlinkItem 返回后统一累加
-$script:migrateCount = 0
 
 # ── 入口 ──────────────────────────────────────────────────────────────────────
 
@@ -584,11 +591,13 @@ Write-Host ""
 # ── 主循环（修复：统计由函数返回后在主循环统一累加） ──────────────────────────
 
 try {
-    foreach ($link in $symlinks) {
-        $idx = [array]::IndexOf($symlinks, $link) + 1
-        $result = Process-SymlinkItem -Link $link -Index $idx -Total $symlinks.Count
+    for ($i = 0; $i -lt $symlinks.Count; $i++) {
+        $result = Process-SymlinkItem -Link $symlinks[$i] -Index ($i + 1) -Total $symlinks.Count
         switch ($result.Result) {
-            'success' { $script:stats.success++ }
+            'success' {
+                $script:stats.success++
+                if ($result.Migrate) { $script:stats.migrate++ }
+            }
             'skip'    { $script:stats.skip++ }
             'fail'    { $script:stats.fail++ }
         }
@@ -607,7 +616,7 @@ Write-Host ""
 
 Write-Host "  成功创建: $($script:stats.success)"   -ForegroundColor Green
 Write-Host "  已存在:   $($script:stats.skip)"      -ForegroundColor Yellow
-Write-Host "  迁移数据: $($script:migrateCount)"     -ForegroundColor Cyan
+Write-Host "  迁移数据: $($script:stats.migrate)"     -ForegroundColor Cyan
 Write-Host "  失败:     $($script:stats.fail)"      -ForegroundColor Red
 Write-Host ""
 

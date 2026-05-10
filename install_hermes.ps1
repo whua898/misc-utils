@@ -78,8 +78,32 @@ try {
 # 克隆 Hermes 仓库
 Write-Host "`n克隆 Hermes 仓库..." -ForegroundColor Cyan
 try {
-    & git clone https://github.com/hermes-agent/hermes.git $InstallPath
-    Write-Host "[OK] 仓库克隆成功" -ForegroundColor Green
+    # 尝试多个可能的仓库地址
+    $repoUrls = @(
+        "https://github.com/NousResearch/Hermes-3.git",
+        "https://github.com/NousResearch/hermes-function-calling.git",
+        "https://github.com/weaviate/hermes.git"
+    )
+    
+    $cloned = $false
+    foreach ($url in $repoUrls) {
+        Write-Host "  尝试: $url" -ForegroundColor Gray
+        try {
+            & git clone $url $InstallPath 2>&1 | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "[OK] 仓库克隆成功: $url" -ForegroundColor Green
+                $cloned = $true
+                break
+            }
+        } catch {
+            continue
+        }
+    }
+    
+    if (-not $cloned) {
+        Write-Host "[ERROR] 所有仓库地址都失败，请手动检查仓库地址" -ForegroundColor Red
+        exit 1
+    }
 } catch {
     Write-Host "[ERROR] 仓库克隆失败: $_" -ForegroundColor Red
     exit 1

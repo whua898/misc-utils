@@ -75,16 +75,13 @@ try {
     }
 }
 
-# 配置 Git 凭证，避免弹出账号选择框
+# 配置 Git 凭证
 Write-Host "`n配置 Git 凭证..." -ForegroundColor Cyan
 try {
-    # 设置使用 Windows 凭据管理器
     & git config --global credential.helper manager-core 2>&1 | Out-Null
-    # 或者使用 wincred（如果 manager-core 不可用）
-    & git config --global credential.helper wincred 2>&1 | Out-Null
     Write-Host "[OK] Git 凭证已配置" -ForegroundColor Green
 } catch {
-    Write-Host "[WARN] Git 凭证配置失败，可能会弹出账号选择" -ForegroundColor Yellow
+    Write-Host "[WARN] Git 凭证配置失败" -ForegroundColor Yellow
 }
 
 # 克隆 Hermes 仓库
@@ -92,6 +89,7 @@ Write-Host "`n克隆 Hermes 仓库..." -ForegroundColor Cyan
 try {
     # 尝试多个可能的仓库地址
     $repoUrls = @(
+        "https://github.com/NousResearch/hermes-agent.git",
         "https://github.com/NousResearch/Hermes-3.git",
         "https://github.com/NousResearch/hermes-function-calling.git"
     )
@@ -99,29 +97,59 @@ try {
     $cloned = $false
     foreach ($url in $repoUrls) {
         Write-Host "  尝试: $url" -ForegroundColor Gray
-        $cloneResult = & git clone $url $InstallPath 2>&1
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host "[OK] 仓库克隆成功: $url" -ForegroundColor Green
-            $cloned = $true
-            break
-        } else {
-            Write-Host "  [FAIL] $url" -ForegroundColor Red
-            # 清理失败的克隆
-            if (Test-Path "$InstallPath\.git") {
-                Remove-Item "$InstallPath\.git" -Recurse -Force -ErrorAction SilentlyContinue
+        
+        try {
+            # 清理目标目录
+            if (Test-Path $InstallPath) {
+                Remove-Item $InstallPath -Recurse -Force -ErrorAction SilentlyContinue
             }
+            
+            # 直接克隆
+            Write-Host "  克隆中..." -ForegroundColor Cyan
+            $cloneResult = & git clone $url $InstallPath 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "[OK] 仓库克隆成功" -ForegroundColor Green
+                $cloned = $true
+                break
+            } else {
+                Write-Host "  [FAIL] 克隆失败" -ForegroundColor Red
+                Write-Host "  详情: $($cloneResult -split "`n" | Select-Object -First 2)" -ForegroundColor Gray
+            }
+        } catch {
+            Write-Host "  [FAIL] 错误: $_" -ForegroundColor Red
+            continue
         }
     }
     
     if (-not $cloned) {
-        Write-Host "`n[ERROR] 所有仓库地址都失败！" -ForegroundColor Red
-        Write-Host "请检查：" -ForegroundColor Yellow
-        Write-Host "  1. 网络连接是否正常" -ForegroundColor White
-        Write-Host "  2. GitHub 是否可访问" -ForegroundColor White
-        Write-Host "  3. 仓库地址是否正确" -ForegroundColor White
-        Write-Host "`n建议手动安装：" -ForegroundColor Cyan
-        Write-Host "  git clone https://github.com/NousResearch/Hermes-3.git C:\Users\wh898\.hermes" -ForegroundColor Gray
-        exit 1
+        Write-Host "`n[ERROR] 所有预设仓库地址都失败！" -ForegroundColor Red
+        Write-Host "`n请手动指定仓库地址：" -ForegroundColor Yellow
+        $customUrl = Read-Host "输入 GitHub 仓库 URL（直接回车跳过）"
+        if ($customUrl -and $customUrl.Trim() -ne "") {
+            # 清理目标目录
+            if (Test-Path $InstallPath) {
+                Write-Host "  正在清理目标目录..." -ForegroundColor Cyan
+                Remove-Item $InstallPath -Recurse -Force -ErrorAction SilentlyContinue
+            }
+            
+            Write-Host "  尝试克隆: $customUrl" -ForegroundColor Cyan
+            try {
+                $cloneResult = & git clone $customUrl.Trim() $InstallPath 2>&1
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "[OK] 仓库克隆成功" -ForegroundColor Green
+                    $cloned = $true
+                } else {
+                    Write-Host "[ERROR] 克隆失败" -ForegroundColor Red
+                    exit 1
+                }
+            } catch {
+                Write-Host "[ERROR] 克隆异常: $_" -ForegroundColor Red
+                exit 1
+            }
+        } else {
+            Write-Host "已跳过仓库克隆" -ForegroundColor Gray
+            exit 0
+        }
     }
 } catch {
     Write-Host "[ERROR] 仓库克隆异常: $_" -ForegroundColor Red

@@ -75,6 +75,18 @@ try {
     }
 }
 
+# 配置 Git 凭证，避免弹出账号选择框
+Write-Host "`n配置 Git 凭证..." -ForegroundColor Cyan
+try {
+    # 设置使用 Windows 凭据管理器
+    & git config --global credential.helper manager-core 2>&1 | Out-Null
+    # 或者使用 wincred（如果 manager-core 不可用）
+    & git config --global credential.helper wincred 2>&1 | Out-Null
+    Write-Host "[OK] Git 凭证已配置" -ForegroundColor Green
+} catch {
+    Write-Host "[WARN] Git 凭证配置失败，可能会弹出账号选择" -ForegroundColor Yellow
+}
+
 # 克隆 Hermes 仓库
 Write-Host "`n克隆 Hermes 仓库..." -ForegroundColor Cyan
 try {

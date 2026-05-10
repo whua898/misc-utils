@@ -49,3 +49,18 @@ us
 
 # Qwen
 .qwen/
+
+# Sensitive files (DO NOT COMMIT)
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+*.p12
+*.pfx
+secrets.json
+credentials.json
+*password*
+*secret*
+*token*
+*.log

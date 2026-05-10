@@ -3,10 +3,38 @@
     恢复 C 盘符号链接（重装系统后重建符号链接用）
 .DESCRIPTION
     从 symlinks.txt 读取源路径，自动将 C: 替换为 D: 作为目标，创建目录符号链接。
-    功能：跳过已存在的符号链接、自动检测锁定进程、智能恢复。
+    功能：跳过已存在的符号链接、自动检测锁定进程、智能恢复、强制解锁。
     自动扫描用户目录下 . 开头的未链接目录并追加到 symlinks.txt。
+    
+    强制解锁功能：
+    - 自动检测并终止锁定文件的进程
+    - 支持激进模式（终止更多进程类型）
+    - 尝试使用 Sysinternals handle.exe 关闭文件句柄
+    - 多次重试机制（可配置）
+    - 最后尝试使用 cmd rd 命令强制删除
+.PARAMETER ForceUnlock
+    启用最强解锁模式：
+    - 精确检测锁定进程（handle.exe / openfiles / 模块扫描）
+    - 显示详细的进程信息（名称、PID、路径）
+    - 强制终止所有锁定进程
+    - 尝试关闭文件句柄
+    - 增加重试次数和等待时间
+.PARAMETER MaxRetries
+    最大重试次数，默认 5 次（最强模式建议 8-10 次）
 .NOTES
     需要管理员权限运行。
+.EXAMPLE
+    # 标准模式
+    .\restore-symlinks.ps1
+    
+    # 强制解锁模式
+    .\restore-symlinks.ps1 -ForceUnlock
+    
+    # 自定义重试次数
+    .\restore-symlinks.ps1 -MaxRetries 10
+    
+    # 预览模式（不执行实际操作）
+    .\restore-symlinks.ps1 -WhatIf
 #>
 
 #Requires -RunAsAdministrator
@@ -14,7 +42,9 @@
 [CmdletBinding()]
 param(
     [switch]$WhatIf,
-    [string]$ConfigFile = ""
+    [string]$ConfigFile = "",
+    [switch]$ForceUnlock,  # 强制解锁模式
+    [int]$MaxRetries = 5   # 最大重试次数（默认5次）
 )
 
 $ErrorActionPreference = "Continue"
@@ -164,7 +194,7 @@ function Stop-LockingProcesses {
         尝试终止锁定指定路径的进程与服务。
         返回 $true（即使部分失败也继续）。
     #>
-    param([string]$Path)
+    param([string]$Path, [switch]$Aggressive)
 
     try {
         $stopped = @()
@@ -181,16 +211,16 @@ function Stop-LockingProcesses {
             @('*fiddler*', 'fiddler*'),
             @('*lmstudio*', 'lmstudio*'),
             @('*cherry*', 'cherry*'),
-            @('*claude*', 'claude*'),
+            @('*claude*', 'claude*', 'anthropic*'),
             @('*cline*', 'cline*'),
             @('*gemini*', 'gemini*'),
-            @('*qwen*', 'qwen*'),
+            @('*qwen*', 'qwen*', 'tongyi*', 'lingma*'),
+            @('*hermes*', 'hermes*'),
             @('*google*', 'google*', 'chrome*', 'crashpad*'),
-            @('*lingma*', 'lingma*', 'tongyi*', 'trae*'),
+            @('*jetbrains*', 'idea*', 'pycharm*', 'webstorm*', 'rider*'),
             # 编辑器/IDE：限制更精确避免误杀
             @('*visualstudio*', 'devenv*'),
-            @('*pycharm*', 'pycharm*'),
-            @('*idea*', 'idea*')
+            @('*python*', 'python*', 'uvicorn*', 'node*')
         )
 
         foreach ($map in $keywordMap) {
@@ -201,8 +231,10 @@ function Stop-LockingProcesses {
             }
         }
 
-        # 始终检查 explorer
-        $patterns += 'explorer'
+        # 始终检查 explorer（仅在非激进模式下跳过）
+        if (-not $Aggressive) {
+            $patterns += 'explorer'
+        }
 
         # 去重
         $patterns = $patterns | Select-Object -Unique
@@ -293,16 +325,194 @@ function Restore-Services {
     $script:stoppedServices.Clear()
 }
 
+# ── 2.3. 精确检测锁定文件的进程 ───────────────────────────────────────────────
+
+function Find-LockingProcesses {
+    <#
+    .SYNOPSIS
+        使用多种方法精确检测锁定指定路径的进程。
+    .RETURNS
+        进程信息数组 @{ProcessName; PID; Path; LockType}
+    #>
+    param([string]$Path)
+    
+    $lockingProcesses = @()
+    
+    try {
+        # 方法 1: 使用 handle.exe（最准确）
+        $handleExe = Get-Command handle.exe -ErrorAction SilentlyContinue
+        if (-not $handleExe) {
+            $possiblePaths = @(
+                "$env:ProgramFiles\SysinternalsSuite\handle.exe",
+                "$env:LOCALAPPDATA\Sysinternals\handle.exe"
+            )
+            foreach ($p in $possiblePaths) {
+                if (Test-Path $p) {
+                    $handleExe = $p
+                    break
+                }
+            }
+        }
+        
+        if ($handleExe) {
+            Write-Status "使用 handle.exe 检测锁定进程..." -Color Cyan
+            $handleOutput = & $handleExe "$Path" -accepteula 2>&1
+            
+            if ($handleOutput -match '(\w+\.exe)\s+pid:\s+(\d+)\s+type:\s+File') {
+                $procName = $matches[1]
+                $pid = [int]$matches[2]
+                
+                try {
+                    $proc = Get-Process -Id $pid -ErrorAction SilentlyContinue
+                    if ($proc) {
+                        $lockingProcesses += @{
+                            ProcessName = $proc.ProcessName
+                            PID = $pid
+                            Path = $proc.Path
+                            LockType = 'File Handle'
+                            Method = 'handle.exe'
+                        }
+                        Write-Status "  发现: $($proc.ProcessName) (PID: $pid)" -Color Yellow
+                        Write-Status "  路径: $($proc.Path)" -Color Gray
+                    }
+                } catch {}
+            }
+        }
+        
+        # 方法 2: 使用 OpenFiles 命令（Windows 内置）
+        if ($lockingProcesses.Count -eq 0) {
+            Write-Status "使用 openfiles 检测锁定进程..." -Color Cyan
+            try {
+                $openFilesOutput = & openfiles /query /fo CSV /nh 2>&1
+                $csvData = $openFilesOutput | ConvertFrom-Csv
+                
+                foreach ($row in $csvData) {
+                    if ($row.'Open File (Path\\executable)' -like "*$Path*") {
+                        $lockingProcesses += @{
+                            ProcessName = $row.Accessed
+                            PID = [int]$row.'PID'
+                            Path = ''
+                            LockType = 'Open File'
+                            Method = 'openfiles'
+                        }
+                        Write-Status "  发现: $($row.Accessed) (PID: $($row.PID))" -Color Yellow
+                    }
+                }
+            } catch {
+                Write-Status "  openfiles 检测失败" -Color Gray
+            }
+        }
+        
+        # 方法 3: 遍历所有进程检查模块（较慢但全面）
+        if ($lockingProcesses.Count -eq 0) {
+            Write-Status "扫描进程模块..." -Color Cyan
+            $allProcesses = Get-Process -ErrorAction SilentlyContinue
+            
+            foreach ($proc in $allProcesses) {
+                try {
+                    $modules = $proc.Modules | Where-Object {
+                        $_.FileName -like "$Path*"
+                    }
+                    
+                    if ($modules) {
+                        $lockingProcesses += @{
+                            ProcessName = $proc.ProcessName
+                            PID = $proc.Id
+                            Path = $proc.Path
+                            LockType = 'Module'
+                            Method = 'Module Scan'
+                        }
+                        Write-Status "  发现: $($proc.ProcessName) (PID: $($proc.Id))" -Color Yellow
+                    }
+                } catch {
+                    # 忽略无法访问的进程
+                }
+            }
+        }
+        
+    } catch {
+        Write-Status "  进程检测异常: $_" -Color Yellow
+    }
+    
+    return $lockingProcesses
+}
+
+# ── 2.5. 尝试关闭文件句柄 ─────────────────────────────────────────────────────
+
+function Try-CloseHandles {
+    <#
+    .SYNOPSIS
+        尝试使用 handle.exe 或 Sysinternals 工具关闭锁定文件的句柄。
+    #>
+    param([string]$Path)
+    
+    # 检查 handle.exe 是否可用（Sysinternals 工具）
+    $handleExe = Get-Command handle.exe -ErrorAction SilentlyContinue
+    if (-not $handleExe) {
+        # 尝试常见位置
+        $possiblePaths = @(
+            "$env:ProgramFiles\SysinternalsSuite\handle.exe",
+            "$env:LOCALAPPDATA\Sysinternals\handle.exe",
+            "C:\Windows\System32\handle.exe"
+        )
+        foreach ($p in $possiblePaths) {
+            if (Test-Path $p) {
+                $handleExe = $p
+                break
+            }
+        }
+    }
+    
+    if (-not $handleExe) {
+        Write-Status "[INFO] handle.exe 未找到，跳过句柄关闭" -Color Gray
+        return
+    }
+    
+    try {
+        Write-Status "正在查找锁定文件的句柄..." -Color Cyan
+        $handleOutput = & handle.exe "$Path" 2>&1
+        
+        if ($handleOutput -match '(\w+\.exe)\s+pid:\s+(\d+)\s+type:\s+File\s+\w+:\s+(.+)$') {
+            $processName = $matches[1]
+            $pid = $matches[2]
+            $handleId = $matches[3]
+            
+            Write-Status "发现锁定: $processName (PID: $pid, Handle: $handleId)" -Color Yellow
+            Write-Status "尝试关闭句柄..." -Color Cyan
+            
+            # 需要管理员权限
+            $closeResult = & handle.exe -c $handleId -p $pid -y 2>&1
+            
+            if ($LASTEXITCODE -eq 0) {
+                Write-Status "[OK] 句柄已关闭" -Color Green
+                Start-Sleep -Seconds 1
+            } else {
+                Write-Status "[WARN] 关闭句柄失败" -Color Yellow
+            }
+        } else {
+            Write-Status "[INFO] 未找到匹配的句柄" -Color Gray
+        }
+    } catch {
+        Write-Status "[WARN] 句柄检测异常: $_" -Color Yellow
+    }
+}
+
 # ── 3. 强制删除目录（带重试+自动终止锁定进程） ─────────────────────────────────
 
 function Remove-DirectoryWithForce {
     <#
     .SYNOPSIS
         递归删除目录，遇到锁定自动查杀进程后重试。
+        支持强制解锁模式，使用多种方法尝试删除。
     .RETURNS
         $true 删除成功 / $false 最终失败
     #>
-    param([string]$Path, [int]$MaxRetries = 3)
+    param([string]$Path, [int]$MaxRetriesParam)
+    
+    # 使用参数或全局设置
+    if (-not $MaxRetriesParam) {
+        $MaxRetriesParam = $MaxRetries
+    }
 
     # 安全防护：拒绝删除系统关键路径
     if ([string]::IsNullOrWhiteSpace($Path) -or
@@ -318,29 +528,107 @@ function Remove-DirectoryWithForce {
         return $true
     }
 
-    for ($i = 1; $i -le $MaxRetries; $i++) {
+    Write-Status "开始强制删除: $Path" -Color Cyan
+    Write-Status "最大重试次数: $MaxRetriesParam" -Color Gray
+    
+    for ($i = 1; $i -le $MaxRetriesParam; $i++) {
         try {
+            Write-Status "  第 $i/$MaxRetriesParam 次尝试..." -Color Gray
             Remove-Item $Path -Recurse -Force -ErrorAction Stop
             Start-Sleep -Seconds 1
+            Write-Status "[OK] 目录删除成功" -Color Green
             return $true
         } catch {
-            if ($i -eq $MaxRetries) {
-                Write-Status "[FAIL] 重试 $MaxRetries 次后仍无法删除: $($_.Exception.Message)" -Color Red
-                return $false
-            }
-            # 修复：输出完整异常信息
-            Write-Status "[WARN] 第 $i 次删除失败: $($_.Exception.Message)" -Color Yellow
-            Write-Status "尝试终止锁定进程..." -Color Cyan
-            Stop-LockingProcesses -Path $Path
-
-            if ($Path -like '*\autodesk*') {
-                Write-Status "强制终止 Autodesk 进程树..." -Color Cyan
-                & taskkill /F /IM adskflex.exe /T 2>$null
-                & taskkill /F /IM AdskAccessServiceHost.exe /T 2>$null
-                & taskkill /F /IM AdskLicensingService.exe /T 2>$null
-                Start-Sleep -Seconds 3
+            Write-Status "[WARN] 删除失败: $($_.Exception.Message)" -Color Yellow
+            
+            if ($i -lt $MaxRetriesParam) {
+                # ★ 精确检测锁定进程
+                Write-Status "正在精确检测锁定进程..." -Color Cyan
+                $lockers = Find-LockingProcesses -Path $Path
+                
+                if ($lockers.Count -gt 0) {
+                    Write-Status "发现 $($lockers.Count) 个锁定进程:" -Color Yellow
+                    foreach ($locker in $lockers) {
+                        Write-Status "  • $($locker.ProcessName) (PID: $($locker.PID)) - $($locker.LockType)" -Color White
+                        Write-Status "    路径: $($locker.Path)" -Color Gray
+                    }
+                    
+                    # 强制终止所有锁定进程
+                    Write-Status "正在强制终止锁定进程..." -Color Cyan
+                    foreach ($locker in $lockers) {
+                        try {
+                            $proc = Get-Process -Id $locker.PID -ErrorAction SilentlyContinue
+                            if ($proc) {
+                                Stop-Process -Id $locker.PID -Force -ErrorAction Stop
+                                Write-Status "  ✓ 已终止: $($locker.ProcessName) (PID: $($locker.PID))" -Color Green
+                            }
+                        } catch {
+                            Write-Status "  ✗ 无法终止: $($locker.ProcessName) (PID: $($locker.PID))" -Color Red
+                        }
+                    }
+                } else {
+                    Write-Status "未检测到明确的锁定进程，尝试通用清理..." -Color Yellow
+                    # 激进模式：终止更多可能的进程
+                    Stop-LockingProcesses -Path $Path -Aggressive
+                }
+                
+                # 尝试关闭文件句柄
+                if ($ForceUnlock) {
+                    Write-Status "尝试关闭文件句柄..." -Color Cyan
+                    Try-CloseHandles -Path $Path
+                }
+                
+                # 特定应用的强制处理
+                if ($Path -like '*\autodesk*') {
+                    Write-Status "强制终止 Autodesk 进程树..." -Color Cyan
+                    & taskkill /F /IM adskflex.exe /T 2>$null
+                    & taskkill /F /IM AdskAccessServiceHost.exe /T 2>$null
+                    & taskkill /F /IM AdskLicensingService.exe /T 2>$null
+                }
+                
+                if ($Path -like '*hermes*') {
+                    Write-Status "强制终止 Hermes/Python/Node 相关进程..." -Color Cyan
+                    Get-Process | Where-Object {
+                        $_.ProcessName -like '*python*' -or
+                        $_.ProcessName -like '*node*' -or
+                        $_.ProcessName -like '*hermes*'
+                    } | ForEach-Object {
+                        Write-Status "  终止: $($_.ProcessName) (PID: $($_.Id))" -Color Gray
+                        Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+                    }
+                }
+                
+                # 等待时间递增（更强模式）
+                $waitTime = [Math]::Min(3 + $i, 8)  # 从 3 秒递增到 8 秒
+                Write-Status "等待 ${waitTime}秒后重试..." -Color Gray
+                Start-Sleep -Seconds $waitTime
             } else {
-                Start-Sleep -Seconds 2
+                Write-Status "[FAIL] 重试 $MaxRetriesParam 次后仍无法删除" -Color Red
+                Write-Status "  错误详情: $($_.Exception.Message)" -Color Gray
+                
+                # 最后一次尝试：使用 cmd 的 rd 命令
+                Write-Status "尝试使用 cmd rd /s /q 强制删除..." -Color Yellow
+                try {
+                    $cmdResult = & cmd /c "rd /s /q `"$Path`"" 2>&1
+                    if ($LASTEXITCODE -eq 0) {
+                        Write-Status "[OK] 通过 cmd rd 删除成功" -Color Green
+                        return $true
+                    } else {
+                        Write-Status "[FAIL] cmd rd 也失败了 (退出码: $LASTEXITCODE)" -Color Red
+                    }
+                } catch {
+                    Write-Status "[FAIL] cmd rd 异常: $_" -Color Red
+                }
+                
+                # 终极手段：重启后删除（提示用户）
+                Write-Status "" -Color White
+                Write-Status "⚠️  建议操作:" -Color Yellow
+                Write-Status "  1. 重启电脑" -Color White
+                Write-Status "  2. 立即运行此脚本（不要打开其他程序）" -Color White
+                Write-Status "  3. 或手动删除: Remove-Item '$Path' -Recurse -Force" -Color White
+                Write-Status "" -Color White
+                
+                return $false
             }
         }
     }
@@ -447,7 +735,7 @@ function Process-SymlinkItem {
         }
 
         # 删除源目录（自动处理锁定）
-        if (-not (Remove-DirectoryWithForce -Path $Link.Source)) {
+        if (-not (Remove-DirectoryWithForce -Path $Link.Source -MaxRetriesParam $MaxRetries)) {
             return @{ Result = 'fail' }
         }
 

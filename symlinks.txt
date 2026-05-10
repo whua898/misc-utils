@@ -5,7 +5,7 @@
 # - # 开头为注释
 
 # === ProgramData ===
-C:\ProgramData\Intel Package Cache {1CEAC85D-2590-4760-800F-8DE5E91F3700}
+C:\ProgramData\Intel Package Cache {1CEAC85D-2590-4760-800F-8DE5E91F3700} -> D:\ProgramData\Intel Package Cache
 C:\ProgramData\LogiOptionsPlus
 C:\ProgramData\Logishrd
 C:\ProgramData\Microsoft\VisualStudio
@@ -39,15 +39,26 @@ C:\Users\wh898\.InstallAnywhere
 C:\Users\wh898\.junie
 C:\Users\wh898\.lingma
 C:\Users\wh898\.lmstudio
-C:\Users\wh898\AppData\Local\lm-studio-updater
 C:\Users\wh898\.local
 C:\Users\wh898\.matplotlib
 C:\Users\wh898\.ohpm
 C:\Users\wh898\.qwen
 C:\Users\wh898\.trae-cn
 C:\Users\wh898\.ssh
+C:\Users\wh898\.hermes
+C:\Users\wh898\AppData\Roaming\Trae CN
+C:\Users\wh898\AppData\Roaming\TRAE SOLO CN
+C:\Users\wh898\AppData\Roaming\npm
 C:\Users\wh898\AppData\Local\Google
 C:\Users\wh898\AppData\Local\Siemens
+C:\Users\wh898\AppData\Local\.lingma
+C:\Users\wh898\AppData\Local\lm-studio-updater
+C:\Users\wh898\AppData\Local\hermes
+C:\Users\wh898\AppData\Local\Claude-3p
+
+
+C:\Users\wh898\.hermes-web-ui
+C:\Users\wh898\.jetbrains
 
 # === 卷挂载 ===
 C:\Users\wh898\PCManger\mdfs -> Volume{d6cc17c5-1733-4085-bce7-964f1e9f5de9}\

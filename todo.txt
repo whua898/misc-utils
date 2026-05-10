@@ -1,6 +1,0 @@
-- [x] 分析脚本逻辑
-- [x] 清理冗余 $migrateCount → 统一用 $stats.migrate
-- [x] 简化 $svc.StartType 冗余 if 判断
-- [x] 主循环 for → foreach 更清晰
-- [x] Add-MissingDotDirs 哈希表加速查找
-- [x] 验证语法 + 提交

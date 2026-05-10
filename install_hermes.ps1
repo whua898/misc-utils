@@ -81,31 +81,38 @@ try {
     # 尝试多个可能的仓库地址
     $repoUrls = @(
         "https://github.com/NousResearch/Hermes-3.git",
-        "https://github.com/NousResearch/hermes-function-calling.git",
-        "https://github.com/weaviate/hermes.git"
+        "https://github.com/NousResearch/hermes-function-calling.git"
     )
     
     $cloned = $false
     foreach ($url in $repoUrls) {
         Write-Host "  尝试: $url" -ForegroundColor Gray
-        try {
-            & git clone $url $InstallPath 2>&1 | Out-Null
-            if ($LASTEXITCODE -eq 0) {
-                Write-Host "[OK] 仓库克隆成功: $url" -ForegroundColor Green
-                $cloned = $true
-                break
+        $cloneResult = & git clone $url $InstallPath 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "[OK] 仓库克隆成功: $url" -ForegroundColor Green
+            $cloned = $true
+            break
+        } else {
+            Write-Host "  [FAIL] $url" -ForegroundColor Red
+            # 清理失败的克隆
+            if (Test-Path "$InstallPath\.git") {
+                Remove-Item "$InstallPath\.git" -Recurse -Force -ErrorAction SilentlyContinue
             }
-        } catch {
-            continue
         }
     }
     
     if (-not $cloned) {
-        Write-Host "[ERROR] 所有仓库地址都失败，请手动检查仓库地址" -ForegroundColor Red
+        Write-Host "`n[ERROR] 所有仓库地址都失败！" -ForegroundColor Red
+        Write-Host "请检查：" -ForegroundColor Yellow
+        Write-Host "  1. 网络连接是否正常" -ForegroundColor White
+        Write-Host "  2. GitHub 是否可访问" -ForegroundColor White
+        Write-Host "  3. 仓库地址是否正确" -ForegroundColor White
+        Write-Host "`n建议手动安装：" -ForegroundColor Cyan
+        Write-Host "  git clone https://github.com/NousResearch/Hermes-3.git C:\Users\wh898\.hermes" -ForegroundColor Gray
         exit 1
     }
 } catch {
-    Write-Host "[ERROR] 仓库克隆失败: $_" -ForegroundColor Red
+    Write-Host "[ERROR] 仓库克隆异常: $_" -ForegroundColor Red
     exit 1
 }
 
@@ -130,9 +137,15 @@ if (-not $SkipWebUI) {
         }
         New-Item -ItemType Directory -Path $WebUIPath -Force | Out-Null
         Set-Location $WebUIPath
-        & git clone https://github.com/hermes-agent/hermes-web-ui.git .
-        & uv sync
-        Write-Host "[OK] Web UI 安装成功" -ForegroundColor Green
+        
+        $webUIResult = & git clone https://github.com/weaviate/hermes-web-ui.git . 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "[WARN] Web UI 仓库克隆失败，跳过 Web UI 安装" -ForegroundColor Yellow
+            Write-Host "  错误: $webUIResult" -ForegroundColor Gray
+        } else {
+            & uv sync
+            Write-Host "[OK] Web UI 安装成功" -ForegroundColor Green
+        }
     } catch {
         Write-Host "[WARN] Web UI 安装失败: $_" -ForegroundColor Yellow
     }

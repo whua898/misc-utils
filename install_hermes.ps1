@@ -1,11 +1,9 @@
 # Hermes AI 安装脚本
-# 此脚本会自动下载并安装 Hermes AI 及其 Web UI
+# 此脚本会自动下载并安装 Hermes AI
 
 [CmdletBinding()]
 param(
     [string]$InstallPath = "$env:USERPROFILE\.hermes",
-    [string]$WebUIPath = "$env:USERPROFILE\.hermes-web-ui",
-    [switch]$SkipWebUI,
     [switch]$Force
 )
 
@@ -43,10 +41,7 @@ Write-Host "正在创建安装目录..." -ForegroundColor Cyan
 New-Item -ItemType Directory -Path $InstallPath -Force | Out-Null
 Write-Host "[OK] 主目录: $InstallPath" -ForegroundColor Green
 
-if (-not $SkipWebUI) {
-    New-Item -ItemType Directory -Path $WebUIPath -Force | Out-Null
-    Write-Host "[OK] Web UI 目录: $WebUIPath" -ForegroundColor Green
-}
+
 
 # 检查 Python 环境
 Write-Host "`n检查 Python 环境..." -ForegroundColor Cyan
@@ -96,7 +91,7 @@ try {
     
     $cloned = $false
     foreach ($url in $repoUrls) {
-        Write-Host "  尝试: $url" -ForegroundColor Gray
+        Write-Host "`n  尝试: $url" -ForegroundColor Gray
         
         try {
             # 清理目标目录
@@ -104,19 +99,32 @@ try {
                 Remove-Item $InstallPath -Recurse -Force -ErrorAction SilentlyContinue
             }
             
-            # 直接克隆
-            Write-Host "  克隆中..." -ForegroundColor Cyan
-            $cloneResult = & git clone $url $InstallPath 2>&1
+            # 直接克隆，不捕获输出，让 git 直接显示
+            Write-Host "  开始克隆..." -ForegroundColor Cyan
+            
+            # 增加 Git 缓冲区，避免大仓库 SSL 错误
+            $env:GIT_HTTP_MAX_REQUESTS = "10"
+            & git config --global http.postBuffer 524288000 2>$null
+            & git config --global core.compression 0 2>$null
+            
+            # 使用浅克隆先获取基础，然后加深
+            & git clone --depth 1 $url $InstallPath
+            
             if ($LASTEXITCODE -eq 0) {
-                Write-Host "[OK] 仓库克隆成功" -ForegroundColor Green
-                $cloned = $true
-                break
+                # 检查是否有 pyproject.toml
+                if (Test-Path "$InstallPath\pyproject.toml") {
+                    Write-Host "  [OK] 仓库克隆成功（包含 pyproject.toml）" -ForegroundColor Green
+                    $cloned = $true
+                    break
+                } else {
+                    Write-Host "  [WARN] 克隆成功但缺少 pyproject.toml，继续尝试其他仓库" -ForegroundColor Yellow
+                    Remove-Item $InstallPath -Recurse -Force -ErrorAction SilentlyContinue
+                }
             } else {
-                Write-Host "  [FAIL] 克隆失败" -ForegroundColor Red
-                Write-Host "  详情: $($cloneResult -split "`n" | Select-Object -First 2)" -ForegroundColor Gray
+                Write-Host "  [FAIL] 克隆失败 (退出码: $LASTEXITCODE)" -ForegroundColor Red
             }
         } catch {
-            Write-Host "  [FAIL] 错误: $_" -ForegroundColor Red
+            Write-Host "  [FAIL] 异常: $_" -ForegroundColor Red
             continue
         }
     }
@@ -132,18 +140,14 @@ try {
                 Remove-Item $InstallPath -Recurse -Force -ErrorAction SilentlyContinue
             }
             
-            Write-Host "  尝试克隆: $customUrl" -ForegroundColor Cyan
-            try {
-                $cloneResult = & git clone $customUrl.Trim() $InstallPath 2>&1
-                if ($LASTEXITCODE -eq 0) {
-                    Write-Host "[OK] 仓库克隆成功" -ForegroundColor Green
-                    $cloned = $true
-                } else {
-                    Write-Host "[ERROR] 克隆失败" -ForegroundColor Red
-                    exit 1
-                }
-            } catch {
-                Write-Host "[ERROR] 克隆异常: $_" -ForegroundColor Red
+            Write-Host "`n  尝试克隆: $customUrl" -ForegroundColor Cyan
+            & git clone $customUrl.Trim() $InstallPath
+            
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "  [OK] 仓库克隆成功" -ForegroundColor Green
+                $cloned = $true
+            } else {
+                Write-Host "  [ERROR] 克隆失败" -ForegroundColor Red
                 exit 1
             }
         } else {
@@ -160,6 +164,10 @@ try {
 Write-Host "`n安装 Python 依赖..." -ForegroundColor Cyan
 Set-Location $InstallPath
 try {
+    if (-not (Test-Path "pyproject.toml")) {
+        Write-Host "[ERROR] 找不到 pyproject.toml，仓库可能不完整" -ForegroundColor Red
+        exit 1
+    }
     & uv sync
     Write-Host "[OK] 依赖安装成功" -ForegroundColor Green
 } catch {
@@ -167,29 +175,7 @@ try {
     exit 1
 }
 
-# 安装 Web UI（如果未跳过）
-if (-not $SkipWebUI) {
-    Write-Host "`n安装 Hermes Web UI..." -ForegroundColor Cyan
-    try {
-        # 清理并重新克隆
-        if (Test-Path $WebUIPath) {
-            Remove-Item $WebUIPath -Recurse -Force
-        }
-        New-Item -ItemType Directory -Path $WebUIPath -Force | Out-Null
-        Set-Location $WebUIPath
-        
-        $webUIResult = & git clone https://github.com/weaviate/hermes-web-ui.git . 2>&1
-        if ($LASTEXITCODE -ne 0) {
-            Write-Host "[WARN] Web UI 仓库克隆失败，跳过 Web UI 安装" -ForegroundColor Yellow
-            Write-Host "  错误: $webUIResult" -ForegroundColor Gray
-        } else {
-            & uv sync
-            Write-Host "[OK] Web UI 安装成功" -ForegroundColor Green
-        }
-    } catch {
-        Write-Host "[WARN] Web UI 安装失败: $_" -ForegroundColor Yellow
-    }
-}
+
 
 # 创建启动脚本
 Write-Host "`n创建启动脚本..." -ForegroundColor Cyan
@@ -204,15 +190,31 @@ Set-Location "$InstallPath"
 $startScript | Out-File -FilePath "$InstallPath\start-hermes.ps1" -Encoding UTF8
 Write-Host "[OK] 启动脚本: $InstallPath\start-hermes.ps1" -ForegroundColor Green
 
-if (-not $SkipWebUI -and (Test-Path "$WebUIPath\package.json")) {
-    $webUIStartScript = @"
-# Hermes Web UI 启动脚本
-Set-Location "$WebUIPath"
-npm run dev
+# 创建全局命令脚本（hermes.cmd）
+Write-Host "`n配置全局 hermes 命令..." -ForegroundColor Cyan
+$hermesCmd = @"
+@echo off
+cd /d "%~dp0"
+uv run hermes %*
 "@
-    $webUIStartScript | Out-File -FilePath "$WebUIPath\start-webui.ps1" -Encoding UTF8
-    Write-Host "[OK] Web UI 启动脚本: $WebUIPath\start-webui.ps1" -ForegroundColor Green
+$hermesCmd | Out-File -FilePath "$InstallPath\hermes.cmd" -Encoding ASCII
+Write-Host "[OK] 全局命令脚本: $InstallPath\hermes.cmd" -ForegroundColor Green
+
+# 添加到 PATH
+try {
+    $currentPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+    if ($currentPath -notlike "*$InstallPath*") {
+        [Environment]::SetEnvironmentVariable('Path', "$currentPath;$InstallPath", 'User')
+        Write-Host "[OK] 已将 $InstallPath 添加到用户 PATH" -ForegroundColor Green
+        Write-Host "     ⚠️  请重启 PowerShell 使更改生效" -ForegroundColor Yellow
+    } else {
+        Write-Host "[OK] PATH 已包含安装目录" -ForegroundColor Gray
+    }
+} catch {
+    Write-Host "[WARN] 无法自动添加到 PATH，请手动添加: $InstallPath" -ForegroundColor Yellow
 }
+
+
 
 
 # 完成
@@ -222,15 +224,12 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "📁 安装位置:" -ForegroundColor Yellow
 Write-Host "  主程序: $InstallPath" -ForegroundColor White
-if (-not $SkipWebUI) {
-    Write-Host "  Web UI: $WebUIPath" -ForegroundColor White
-}
 Write-Host ""
 Write-Host "🚀 启动方式:" -ForegroundColor Yellow
-Write-Host "  1. 运行: $InstallPath\start-hermes.ps1" -ForegroundColor White
-if (-not $SkipWebUI -and (Test-Path "$WebUIPath\start-webui.ps1")) {
-    Write-Host "  2. 运行: $WebUIPath\start-webui.ps1" -ForegroundColor White
-}
+Write-Host "  方式 1: hermes chat (推荐，全局命令)" -ForegroundColor White
+Write-Host "  方式 2: $InstallPath\start-hermes.ps1" -ForegroundColor White
+Write-Host ""
+Write-Host "⚠️  注意: 首次使用需要重启 PowerShell 使全局命令生效" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "📖 文档: https://github.com/hermes-agent/hermes" -ForegroundColor Yellow
 Write-Host ""

@@ -60,5 +60,8 @@ C:\Users\wh898\AppData\Local\Claude-3p
 C:\Users\wh898\.hermes-web-ui
 C:\Users\wh898\.jetbrains
 
+C:\Users\wh898\.agent-browser
+C:\Users\wh898\.wdm
+
 # === 卷挂载 ===
 C:\Users\wh898\PCManger\mdfs -> Volume{d6cc17c5-1733-4085-bce7-964f1e9f5de9}\

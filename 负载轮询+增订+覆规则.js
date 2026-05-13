@@ -123,6 +123,12 @@ function main(config) {
     ],
 
     'rules': [
+      // 🏠 本地地址直连规则 - 必须放在最前面
+      'IP-CIDR,127.0.0.0/8,DIRECT,no-resolve',
+      'IP-CIDR6,::1/128,DIRECT,no-resolve',
+      'DOMAIN,localhost,DIRECT,no-resolve',
+      'DOMAIN-SUFFIX,localhost,DIRECT,no-resolve',
+      
       // Microsoft Store 和 UWP 应用网络直连规则 - 必须放在最前面（基于微软官方文档）
       // Microsoft 核心域名
       'DOMAIN-SUFFIX,microsoft.com,DIRECT,no-resolve',

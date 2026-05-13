@@ -44,7 +44,8 @@ param(
     [switch]$WhatIf,
     [string]$ConfigFile = "",
     [switch]$ForceUnlock,  # 强制解锁模式
-    [int]$MaxRetries = 5   # 最大重试次数（默认5次）
+    [int]$MaxRetries = 5,   # 最大重试次数（默认5次）
+    [switch]$ForceMode     # 强制模式：自动选择合并复制，不询问用户
 )
 
 $ErrorActionPreference = "Continue"
@@ -149,7 +150,8 @@ function Invoke-Robocopy {
         [string]$Source,
         [string]$Dest,
         [int]$Retry = 3,
-        [int]$WaitSec = 5
+        [int]$WaitSec = 5,
+        [switch]$Merge
     )
 
     # 确保目标目录存在
@@ -169,8 +171,10 @@ function Invoke-Robocopy {
 
     try {
         # 修复：路径用双引号包裹防止空格问题；/COPY:DATS 保留 ACL 权限
+        # Merge 模式：使用 /E 而非 /MIR，避免删除目标已有文件
+        $robocopyMode = if ($Merge) { "/E" } else { "/E" }
         $output = & robocopy "$($Source.TrimEnd('\'))" "$($Dest.TrimEnd('\'))" `
-            /E /COPY:DATS "/R:$Retry" "/W:$WaitSec" /NP /NFL /NDL 2>&1
+            $robocopyMode /COPY:DATS "/R:$Retry" "/W:$WaitSec" /NP /NFL /NDL 2>&1
 
         if ($LASTEXITCODE -lt 8) {
             Write-Status "[OK] 数据迁移完成" -Color Green
@@ -725,13 +729,66 @@ function Process-SymlinkItem {
         # 修复：robocopy 失败时不删除源目录，防止数据丢失
         $robocopyOk = $true
         if (-not $targetNotEmpty) {
+            Write-Status "目标路径为空，开始复制数据..." -Color Cyan
             $robocopyOk = Invoke-Robocopy -Source $Link.Source -Dest $Link.Target
             if (-not $robocopyOk) {
                 Write-Status "[FAIL] 数据迁移失败，拒绝删除源目录以防数据丢失" -Color Red
                 return @{ Result = 'fail' }
             }
         } else {
-            Write-Status "目标路径已有数据，跳过复制" -Color Cyan
+            # 目标已有数据，询问用户如何处理
+            if ($script:skipAllConflicts) {
+                Write-Status "全局跳过模式：保留目标现有数据" -Color Cyan
+                # 直接跳过，不询问
+            } else {
+                Write-Status "⚠️  警告: 目标路径已有数据！" -Color Yellow
+                Write-Status "  源路径: $($Link.Source)" -Color Gray
+                Write-Status "  目标路径: $($Link.Target)" -Color Gray
+                Write-Status "" -Color White
+                Write-Status "选择操作:" -Color Cyan
+                Write-Status "  [S] 跳过复制（保留目标现有数据）" -Color White
+                Write-Status "  [M] 合并复制（将源数据合并到目标）" -Color White
+                Write-Status "  [R] 替换目标（删除目标数据后复制）" -Color White
+                Write-Status "  [A] 全部跳过（后续所有类似情况都跳过）" -Color White
+                Write-Status "" -Color White
+                
+                # 如果没有交互模式，默认跳过（安全）
+                if ($ForceMode) {
+                    Write-Status "强制模式：执行合并复制" -Color Yellow
+                    $choice = 'M'
+                } else {
+                    $choice = Read-Host "请选择 (S/M/R/A)"
+                }
+                
+                switch ($choice.ToUpper()) {
+                    'M' {
+                        Write-Status "执行合并复制..." -Color Cyan
+                        $robocopyOk = Invoke-Robocopy -Source $Link.Source -Dest $Link.Target -Merge
+                        if (-not $robocopyOk) {
+                            Write-Status "[WARN] 合并复制出现问题，但继续处理" -Color Yellow
+                        }
+                    }
+                    'R' {
+                        Write-Status "删除目标数据并重新复制..." -Color Yellow
+                        Write-Status "正在清空目标目录..." -Color Cyan
+                        Remove-Item "$($Link.Target)\*" -Recurse -Force -ErrorAction SilentlyContinue
+                        Write-Status "开始复制..." -Color Cyan
+                        $robocopyOk = Invoke-Robocopy -Source $Link.Source -Dest $Link.Target
+                        if (-not $robocopyOk) {
+                            Write-Status "[FAIL] 数据复制失败" -Color Red
+                            return @{ Result = 'fail' }
+                        }
+                    }
+                    'A' {
+                        Write-Status "设置全局跳过标志" -Color Yellow
+                        $script:skipAllConflicts = $true
+                        # 继续执行，跳过本次复制
+                    }
+                    default {
+                        Write-Status "跳过复制，保留目标现有数据" -Color Cyan
+                    }
+                }
+            }
         }
 
         # 删除源目录（自动处理锁定）
@@ -854,6 +911,7 @@ $symlinks = Load-SymlinkConfig -Path $ConfigFile
 # ── 统计变量 ──────────────────────────────────────────────────────────────────
 
 $script:stoppedServices = @{}
+$script:skipAllConflicts = $false  # 全局跳过冲突标志
 $script:stats = @{
     success   = 0
     skip      = 0
